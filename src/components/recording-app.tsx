@@ -1,30 +1,14 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import type {
+  RecordingFileRow,
+  RecordingItemRow,
+  RecordingProjectRow,
+} from "@/lib/recording-types";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-
-type RecordingFileRow = {
-  id: string;
-  sequence_index: number;
-  transcript: string | null;
-  storage_path: string;
-  duration: number | null;
-};
-
-type RecordingProjectRow = {
-  id: string;
-  name: string;
-  summary: string | null;
-  created_at: string;
-};
-
-type RecordingItemRow = {
-  id: string;
-  title: string | null;
-  created_at: string;
-  project_id: string | null;
-  recording_files: RecordingFileRow[] | null;
-};
 
 function combinedTranscript(item: RecordingItemRow): string {
   const files = [...(item.recording_files ?? [])].sort(
@@ -120,6 +104,7 @@ function ItemCard({
 }
 
 export function RecordingApp() {
+  const searchParams = useSearchParams();
   const [projects, setProjects] = useState<RecordingProjectRow[]>([]);
   const [items, setItems] = useState<RecordingItemRow[]>([]);
   const [loadingList, setLoadingList] = useState(true);
@@ -139,6 +124,8 @@ export function RecordingApp() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const startedAtRef = useRef<number>(0);
+  const recordSectionRef = useRef<HTMLElement>(null);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
 
   const loadProjects = useCallback(async () => {
     const supabase = createClient();
@@ -173,7 +160,7 @@ export function RecordingApp() {
     const { data, error } = await supabase
       .from("recording_items")
       .select(
-        "id, title, created_at, project_id, recording_files (id, sequence_index, transcript, storage_path, duration)",
+        "id, title, created_at, project_id, recording_files (id, sequence_index, transcript, storage_path, duration, created_at)",
       )
       .order("created_at", { ascending: false });
 
@@ -189,6 +176,140 @@ export function RecordingApp() {
   const loadData = useCallback(async () => {
     await Promise.all([loadProjects(), loadItems()]);
   }, [loadProjects, loadItems]);
+
+  /** Shared by mic recording stop and file upload — same storage path, DB rows, project/segment rules. */
+  const persistRecordingBlob = useCallback(
+    async (
+      blob: Blob,
+      options: {
+        contentType: string;
+        durationSec: number | null;
+        captureType: string;
+        /** New recording item title; ignored when appending a segment. */
+        newItemTitle?: string;
+      },
+    ): Promise<boolean> => {
+      setRecordError(null);
+      const supabase = createClient();
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setRecordError("Not signed in");
+        return false;
+      }
+
+      const mime =
+        options.contentType || blob.type || "application/octet-stream";
+      const ext = mime.includes("webm")
+        ? "webm"
+        : mime.includes("mp4") || mime.includes("m4a")
+          ? "m4a"
+          : mime.includes("mpeg") || mime.includes("mp3")
+            ? "mp3"
+            : mime.includes("wav")
+              ? "wav"
+              : mime.includes("ogg")
+                ? "ogg"
+                : mime.includes("flac")
+                  ? "flac"
+                  : "bin";
+
+      const fileId = crypto.randomUUID();
+      const storagePath = `${user.id}/${fileId}.${ext}`;
+
+      const { error: upErr } = await supabase.storage
+        .from("recordings")
+        .upload(storagePath, blob, {
+          contentType: mime,
+          upsert: false,
+        });
+
+      if (upErr) {
+        setRecordError(upErr.message);
+        return false;
+      }
+
+      let targetItemId: string;
+      let sequenceIndex: number;
+
+      if (appendToItemId) {
+        const target = items.find((i) => i.id === appendToItemId);
+        if (!target) {
+          setRecordError("Could not find that recording item. Try refreshing.");
+          return false;
+        }
+        targetItemId = appendToItemId;
+        sequenceIndex = nextSequenceIndex(target.recording_files);
+      } else {
+        const title =
+          options.newItemTitle ??
+          `Recording ${new Date().toLocaleString(undefined, {
+            dateStyle: "medium",
+            timeStyle: "short",
+          })}`;
+
+        const projectId =
+          newItemProjectId && projects.some((p) => p.id === newItemProjectId)
+            ? newItemProjectId
+            : null;
+
+        const { data: itemRow, error: itemErr } = await supabase
+          .from("recording_items")
+          .insert({
+            user_id: user.id,
+            title,
+            ...(projectId ? { project_id: projectId } : {}),
+          })
+          .select("id")
+          .single();
+
+        if (itemErr || !itemRow) {
+          setRecordError(itemErr?.message ?? "Failed to create recording item");
+          return false;
+        }
+
+        targetItemId = itemRow.id;
+        sequenceIndex = 0;
+      }
+
+      const { error: fileErr } = await supabase.from("recording_files").insert({
+        recording_item_id: targetItemId,
+        sequence_index: sequenceIndex,
+        storage_path: storagePath,
+        transcript: "",
+        duration: options.durationSec,
+        capture_type: options.captureType,
+      });
+
+      if (fileErr) {
+        setRecordError(fileErr.message);
+        return false;
+      }
+
+      setAppendToItemId(null);
+      await loadData();
+      return true;
+    },
+    [appendToItemId, items, loadData, newItemProjectId, projects],
+  );
+
+  /** Deep link: /record?project=id or /record?append=itemId */
+  useEffect(() => {
+    const append = searchParams.get("append");
+    const project = searchParams.get("project");
+    if (append) {
+      setAppendToItemId(append);
+      setNewItemProjectId("");
+      return;
+    }
+    if (project) {
+      setNewItemProjectId(project);
+      setAppendToItemId(null);
+    }
+  }, [searchParams]);
 
   /** Source of truth for “can record” — avoids Strict Mode / async races leaving authReady stuck false. */
   useEffect(() => {
@@ -290,96 +411,33 @@ export function RecordingApp() {
     chunksRef.current = [];
     mediaRecorderRef.current = null;
 
-    const supabase = createClient();
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      setRecordError("Not signed in");
-      setRecordPhase("idle");
-      return;
-    }
-
-    const ext = mr.mimeType.includes("webm")
-      ? "webm"
-      : mr.mimeType.includes("mp4")
-        ? "m4a"
-        : "bin";
-    const fileId = crypto.randomUUID();
-    const storagePath = `${user.id}/${fileId}.${ext}`;
-
-    const { error: upErr } = await supabase.storage
-      .from("recordings")
-      .upload(storagePath, blob, {
-        contentType: mr.mimeType,
-        upsert: false,
-      });
-
-    if (upErr) {
-      setRecordError(upErr.message);
-      setRecordPhase("idle");
-      return;
-    }
-
-    let targetItemId: string;
-    let sequenceIndex: number;
-
-    if (appendToItemId) {
-      const target = items.find((i) => i.id === appendToItemId);
-      if (!target) {
-        setRecordError("Could not find that recording item. Try refreshing.");
-        setRecordPhase("idle");
-        return;
-      }
-      targetItemId = appendToItemId;
-      sequenceIndex = nextSequenceIndex(target.recording_files);
-    } else {
-      const title = `Recording ${new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`;
-
-      const projectId =
-        newItemProjectId && projects.some((p) => p.id === newItemProjectId)
-          ? newItemProjectId
-          : null;
-
-      const { data: itemRow, error: itemErr } = await supabase
-        .from("recording_items")
-        .insert({
-          user_id: user.id,
-          title,
-          ...(projectId ? { project_id: projectId } : {}),
-        })
-        .select("id")
-        .single();
-
-      if (itemErr || !itemRow) {
-        setRecordError(itemErr?.message ?? "Failed to create recording item");
-        setRecordPhase("idle");
-        return;
-      }
-
-      targetItemId = itemRow.id;
-      sequenceIndex = 0;
-    }
-
-    const { error: fileErr } = await supabase.from("recording_files").insert({
-      recording_item_id: targetItemId,
-      sequence_index: sequenceIndex,
-      storage_path: storagePath,
-      transcript: "",
-      duration: durationSec,
-      capture_type: "browser_media_recorder",
+    await persistRecordingBlob(blob, {
+      contentType: mr.mimeType,
+      durationSec,
+      captureType: "browser_media_recorder",
     });
+    setRecordPhase("idle");
+  };
 
-    if (fileErr) {
-      setRecordError(fileErr.message);
+  const handleUploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    setRecordError(null);
+    if (!authReady) return;
+
+    setRecordPhase("saving");
+    const ok = await persistRecordingBlob(file, {
+      contentType: file.type || "application/octet-stream",
+      durationSec: null,
+      captureType: "file_upload",
+      newItemTitle: `Upload · ${file.name}`,
+    });
+    if (!ok) {
       setRecordPhase("idle");
       return;
     }
-
-    setAppendToItemId(null);
-    await loadData();
     setRecordPhase("idle");
   };
 
@@ -428,11 +486,25 @@ export function RecordingApp() {
     await loadItems();
   };
 
+  /** Start a new recording item in this project (not a segment on an existing item). */
+  const beginRecordingInProject = (projectId: string) => {
+    setRecordError(null);
+    setAppendToItemId(null);
+    setNewItemProjectId(projectId);
+    recordSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-10 px-4 py-12">
-      <header className="flex flex-col gap-2 border-b border-zinc-800 pb-8">
+    <div className="flex w-full flex-col gap-8 px-5 py-8">
+      <header className="flex flex-col gap-2 border-b border-zinc-800 pb-6">
+        <Link
+          href="/"
+          className="text-xs font-medium text-zinc-500 hover:text-zinc-300"
+        >
+          ← Home
+        </Link>
         <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">
-          Recordings
+          Record
         </h1>
         <p className="text-sm text-zinc-400">
           Group items into <strong className="text-zinc-300">recording projects</strong> or leave
@@ -478,12 +550,22 @@ export function RecordingApp() {
               return (
                 <li
                   key={p.id}
-                  className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2 text-sm"
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2 text-sm"
                 >
-                  <span className="font-medium text-zinc-200">{p.name}</span>
-                  <span className="text-zinc-500">
-                    {count} item{count === 1 ? "" : "s"}
-                  </span>
+                  <div className="flex min-w-0 flex-1 items-center gap-3">
+                    <span className="font-medium text-zinc-200">{p.name}</span>
+                    <span className="text-zinc-500">
+                      {count} item{count === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!authReady}
+                    onClick={() => beginRecordingInProject(p.id)}
+                    className="shrink-0 rounded-md border border-emerald-600/60 bg-emerald-950/40 px-2.5 py-1 text-xs font-medium text-emerald-100 hover:bg-emerald-900/50 disabled:opacity-40"
+                  >
+                    Record in project
+                  </button>
                 </li>
               );
             })}
@@ -491,15 +573,18 @@ export function RecordingApp() {
         )}
       </section>
 
-      <section className="flex flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
+      <section
+        ref={recordSectionRef}
+        className="flex scroll-mt-8 flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-6"
+      >
         <h2 className="text-sm font-medium text-zinc-300">Record</h2>
         {appendToItemId ? (
           <p className="text-sm text-amber-100/90">
-            Next clip attaches to{" "}
+            <strong className="text-amber-50">Segment mode:</strong> next clip attaches to{" "}
             <span className="font-medium">
               {items.find((i) => i.id === appendToItemId)?.title ?? "item"}
             </span>
-            .{" "}
+            . This is separate from recording a new item inside a project.{" "}
             <button
               type="button"
               className="underline underline-offset-2 hover:text-amber-50"
@@ -510,8 +595,10 @@ export function RecordingApp() {
           </p>
         ) : (
           <p className="text-sm text-zinc-500">
-            Start a new recording item, or use <strong className="text-zinc-400">Add segment</strong>{" "}
-            on an item below to append in chronological order.
+            Start a <strong className="text-zinc-400">new recording item</strong>, or use{" "}
+            <strong className="text-zinc-400">Add segment</strong> on an item below to append audio
+            to that item only. Use <strong className="text-zinc-400">Record in project</strong>{" "}
+            above to target a project.
           </p>
         )}
         {!authReady && !authError ? (
@@ -522,7 +609,7 @@ export function RecordingApp() {
           <select
             value={newItemProjectId}
             onChange={(e) => setNewItemProjectId(e.target.value)}
-            disabled={!authReady}
+            disabled={!authReady || Boolean(appendToItemId)}
             className="max-w-md rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100 disabled:opacity-40"
           >
             <option value="">Unassigned (inbox)</option>
@@ -533,16 +620,46 @@ export function RecordingApp() {
             ))}
           </select>
         </label>
+        {!appendToItemId && newItemProjectId ? (
+          <p className="text-sm text-emerald-200/90">
+            New recording items will be saved under{" "}
+            <strong className="text-emerald-50">
+              {projects.find((p) => p.id === newItemProjectId)?.name ?? "project"}
+            </strong>
+            .
+          </p>
+        ) : null}
+        <p className="text-sm text-zinc-500">
+          <strong className="text-zinc-400">Upload</strong> uses the same rules: new item (and
+          project) or add segment when an item is in segment mode.
+        </p>
         <div className="flex flex-wrap gap-3">
+          <input
+            ref={uploadInputRef}
+            type="file"
+            className="sr-only"
+            accept="audio/*,video/*,.mp3,.wav,.m4a,.aac,.flac,.ogg"
+            onChange={handleUploadFile}
+          />
           {recordPhase === "idle" ? (
-            <button
-              type="button"
-              onClick={startRecording}
-              disabled={!authReady || recordPhase !== "idle"}
-              className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950 disabled:opacity-40"
-            >
-              {appendToItemId ? "Start segment" : "Start new item"}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={startRecording}
+                disabled={!authReady || recordPhase !== "idle"}
+                className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950 disabled:opacity-40"
+              >
+                {appendToItemId ? "Start segment" : "Start new item"}
+              </button>
+              <button
+                type="button"
+                disabled={!authReady}
+                onClick={() => uploadInputRef.current?.click()}
+                className="rounded-lg border border-zinc-600 bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-100 disabled:opacity-40"
+              >
+                Upload file
+              </button>
+            </>
           ) : null}
           {recordPhase === "recording" ? (
             <button
@@ -566,9 +683,9 @@ export function RecordingApp() {
         <h2 className="text-sm font-medium text-zinc-400">Recording items</h2>
         {loadingList ? (
           <p className="text-sm text-zinc-500">Loading…</p>
-        ) : items.length === 0 ? (
+        ) : items.length === 0 && projects.length === 0 ? (
           <p className="text-sm text-zinc-500">
-            No recordings yet. Use Start to create one.
+            No recordings yet. Create a project above, or use Record with inbox unassigned.
           </p>
         ) : (
           <div className="flex flex-col gap-8">
@@ -602,35 +719,60 @@ export function RecordingApp() {
                       </ul>
                     </div>
                   ) : null}
+                  {items.length === 0 && projects.length > 0 ? (
+                    <p className="text-sm text-zinc-500">
+                      No recording items yet. Choose a project with{" "}
+                      <strong className="text-zinc-400">Record in project</strong> or set{" "}
+                      <strong className="text-zinc-400">New items go into</strong>, then start
+                      recording.
+                    </p>
+                  ) : null}
                   {projects.map((project) => {
                     const projectItems = items.filter(
                       (i) => i.project_id === project.id,
                     );
-                    if (projectItems.length === 0) return null;
                     return (
                       <div key={project.id} className="flex flex-col gap-3">
-                        <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
-                          {project.name}
-                        </h3>
-                        <ul className="flex flex-col gap-4">
-                          {projectItems.map((item) => (
-                            <ItemCard
-                              key={item.id}
-                              item={item}
-                              projects={projects}
-                              authReady={authReady}
-                              recordPhase={recordPhase}
-                              appendToItemId={appendToItemId}
-                              onAppend={() => {
-                                setRecordError(null);
-                                setAppendToItemId(item.id);
-                              }}
-                              onProjectChange={(projectId) =>
-                                setItemProject(item.id, projectId)
-                              }
-                            />
-                          ))}
-                        </ul>
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800/80 pb-2">
+                          <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                            {project.name}
+                          </h3>
+                          <button
+                            type="button"
+                            disabled={!authReady}
+                            onClick={() => beginRecordingInProject(project.id)}
+                            className="rounded-md border border-emerald-600/60 bg-emerald-950/40 px-2.5 py-1 text-xs font-medium text-emerald-100 hover:bg-emerald-900/50 disabled:opacity-40"
+                          >
+                            New recording in project
+                          </button>
+                        </div>
+                        {projectItems.length === 0 ? (
+                          <p className="text-sm text-zinc-600">
+                            No items in this project yet — use{" "}
+                            <strong className="text-zinc-500">New recording in project</strong> or
+                            the Record panel above (project is selected).
+                          </p>
+                        ) : (
+                          <ul className="flex flex-col gap-4">
+                            {projectItems.map((item) => (
+                              <ItemCard
+                                key={item.id}
+                                item={item}
+                                projects={projects}
+                                authReady={authReady}
+                                recordPhase={recordPhase}
+                                appendToItemId={appendToItemId}
+                                onAppend={() => {
+                                  setRecordError(null);
+                                  setAppendToItemId(item.id);
+                                }}
+                                onProjectChange={(projectId) =>
+                                  setItemProject(item.id, projectId)
+                                }
+                              />
+                            ))}
+                          </ul>
+                        )}
                       </div>
                     );
                   })}

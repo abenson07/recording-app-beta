@@ -1,9 +1,12 @@
-import { RecordingApp } from "@/components/recording-app";
+import { HomeView } from "@/components/home-view";
+import { MobileShell } from "@/components/mobile-shell";
 
 export default function Home() {
   return (
-    <main className="min-h-full flex-1 bg-zinc-950 font-sans text-zinc-100">
-      <RecordingApp />
+    <main className="min-h-dvh flex-1 font-sans">
+      <MobileShell>
+        <HomeView />
+      </MobileShell>
     </main>
   );
 }
