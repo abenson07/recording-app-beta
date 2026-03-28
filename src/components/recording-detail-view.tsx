@@ -29,8 +29,11 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
   const { ready: authReady, authError } = useRecordingSession();
   const [item, setItem] = useState<RecordingItemRow | null>(null);
   const [project, setProject] = useState<RecordingProjectRow | null>(null);
+  const [projects, setProjects] = useState<RecordingProjectRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [projectError, setProjectError] = useState<string | null>(null);
+  const [updatingProject, setUpdatingProject] = useState(false);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -38,18 +41,32 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
     if (!sessionData.session) {
       setItem(null);
       setProject(null);
+      setProjects([]);
       setLoading(false);
       return;
     }
 
     setLoading(true);
-    const { data: row, error } = await supabase
-      .from("recording_items")
-      .select(
-        "id, title, created_at, updated_at, project_id, recording_files (id, sequence_index, transcript, storage_path, duration, created_at)",
-      )
-      .eq("id", recordingId)
-      .maybeSingle();
+    setProjectError(null);
+
+    const [itemRes, projectsRes] = await Promise.all([
+      supabase
+        .from("recording_items")
+        .select(
+          "id, title, created_at, updated_at, project_id, recording_files (id, sequence_index, transcript, storage_path, duration, created_at)",
+        )
+        .eq("id", recordingId)
+        .maybeSingle(),
+      supabase
+        .from("recording_projects")
+        .select("id, name, summary, created_at")
+        .order("name", { ascending: true }),
+    ]);
+
+    const row = itemRes.data;
+    const error = itemRes.error;
+
+    setProjects((projectsRes.data as RecordingProjectRow[]) ?? []);
 
     if (error || !row) {
       setNotFound(true);
@@ -76,6 +93,36 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
 
     setLoading(false);
   }, [recordingId]);
+
+  const handleProjectChange = async (nextProjectId: string | null) => {
+    if (!item) return;
+    setProjectError(null);
+    setUpdatingProject(true);
+
+    const prevItem = item;
+    const prevProject = project;
+    const nextProj =
+      nextProjectId === null
+        ? null
+        : (projects.find((p) => p.id === nextProjectId) ?? null);
+
+    setItem({ ...item, project_id: nextProjectId });
+    setProject(nextProj);
+
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("recording_items")
+      .update({ project_id: nextProjectId })
+      .eq("id", item.id);
+
+    if (error) {
+      setProjectError(error.message);
+      setItem(prevItem);
+      setProject(prevProject);
+    }
+
+    setUpdatingProject(false);
+  };
 
   useEffect(() => {
     if (!authReady) return;
@@ -142,6 +189,42 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
             </>
           ) : null}
         </div>
+
+        {!loading && item ? (
+          <section className="flex flex-col gap-2">
+            <AppSectionLabel>Project</AppSectionLabel>
+            <div className="rounded-2xl bg-white/80 px-4 py-3 ring-1 ring-black/[0.06]">
+              <label htmlFor="recording-project" className="sr-only">
+                Project
+              </label>
+              <select
+                id="recording-project"
+                value={item.project_id ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  void handleProjectChange(v === "" ? null : v);
+                }}
+                disabled={updatingProject}
+                className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-800 outline-none focus-visible:ring-2 focus-visible:ring-[#D35400]/35 disabled:opacity-50"
+              >
+                <option value="">Unassigned (inbox)</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+              {projects.length === 0 ? (
+                <p className="mt-2 text-xs text-neutral-500">
+                  No projects yet. Create one from the home screen.
+                </p>
+              ) : null}
+              {projectError ? (
+                <p className="mt-2 text-sm text-red-600">{projectError}</p>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
 
         <section className="flex flex-col gap-3">
           <AppSectionLabel>Segments</AppSectionLabel>
