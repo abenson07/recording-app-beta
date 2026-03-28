@@ -26,6 +26,7 @@ import java.io.IOException;
 public class RecordingService extends Service {
     public static final String ACTION_START = "com.example.recordingappbeta.action.START_RECORDING";
     public static final String ACTION_STOP = "com.example.recordingappbeta.action.STOP_RECORDING";
+    public static final String EXTRA_TITLE = "title";
     public static final String EXTRA_OUTPUT_PATH = "outputPath";
     public static final String EXTRA_ERROR = "error";
     public static final String EXTRA_STARTED_AT_MS = "startedAtMs";
@@ -38,6 +39,16 @@ public class RecordingService extends Service {
     private MediaRecorder recorder;
     private String outputPath;
     private long startedAtMs = 0L;
+
+    private static volatile String lastOutputPath;
+
+    @Nullable
+    public static synchronized File consumeLastOutputFile() {
+        if (lastOutputPath == null) return null;
+        File f = new File(lastOutputPath);
+        lastOutputPath = null;
+        return f;
+    }
 
     @Override
     public void onCreate() {
@@ -145,6 +156,9 @@ public class RecordingService extends Service {
         broadcast.putExtra(EXTRA_STARTED_AT_MS, startedAtMs);
         broadcast.putExtra(EXTRA_STOPPED_AT_MS, stoppedAtMs);
         sendBroadcast(broadcast);
+
+        // Also allow quick retrieval for the Capacitor plugin without wiring a receiver.
+        lastOutputPath = outputPath;
 
         stopForeground(true);
         stopSelf();
