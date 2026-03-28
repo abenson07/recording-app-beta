@@ -11,8 +11,16 @@ const eslintConfig = defineConfig([
     ".next/**",
     "out/**",
     "build/**",
+    "android/**",
     "next-env.d.ts",
   ]),
+  {
+    rules: {
+      // This repo's components intentionally call async loaders inside effects
+      // once auth/session is ready; this rule flags that pattern broadly.
+      "react-hooks/set-state-in-effect": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

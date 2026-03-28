@@ -6,12 +6,13 @@ import type {
   RecordingProjectRow,
 } from "@/lib/recording-types";
 import { persistRecordingBlob as persistRecordingBlobCore } from "@/lib/persist-recording";
+import { isAndroidCapacitor, stopNativeRecording, startNativeRecording } from "@/lib/capacitor/recording";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-/** Mic Start/Stop is hidden in the UI when false; upload + DB pipeline unchanged. */
-const SHOW_MIC_RECORDING = false;
+/** For this hybrid app, enable mic recording UI. */
+const SHOW_MIC_RECORDING = true;
 
 function combinedTranscript(item: RecordingItemRow): string {
   const files = [...(item.recording_files ?? [])].sort(
@@ -271,6 +272,13 @@ export function RecordingApp() {
     if (!authReady) return;
 
     try {
+      if (isAndroidCapacitor()) {
+        await startNativeRecording();
+        startedAtRef.current = Date.now();
+        setRecordPhase("recording");
+        return;
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       chunksRef.current = [];
       const preferredTypes = [
@@ -302,15 +310,26 @@ export function RecordingApp() {
   };
 
   const stopRecording = async () => {
+    setRecordPhase("saving");
+    const durationSec =
+      (Date.now() - startedAtRef.current) / 1000;
+
+    if (isAndroidCapacitor()) {
+      const { blob, mimeType } = await stopNativeRecording();
+      await persistRecordingBlob(blob, {
+        contentType: mimeType,
+        durationSec,
+        captureType: "android_native",
+      });
+      setRecordPhase("idle");
+      return;
+    }
+
     const mr = mediaRecorderRef.current;
     if (!mr || mr.state === "inactive") {
       setRecordPhase("idle");
       return;
     }
-
-    setRecordPhase("saving");
-    const durationSec =
-      (Date.now() - startedAtRef.current) / 1000;
 
     await new Promise<void>((resolve) => {
       mr.onstop = () => resolve();
