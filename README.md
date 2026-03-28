@@ -15,9 +15,25 @@ Product requirements and data model: see [docs/PRODUCT_SPEC.md](docs/PRODUCT_SPE
    - `NEXT_PUBLIC_SUPABASE_URL` — **Project URL**
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY` — **anon public** key
 
-## Supabase CLI (local)
+## Database migrations (hosted — no Docker)
 
-The [Supabase CLI](https://supabase.com/docs/guides/cli) is installed as a dev dependency (`supabase`). Use it for local stacks, migrations, and linking a remote project.
+`.env.local` only points the app at your Supabase API; it does **not** run SQL migrations. New tables from `supabase/migrations/` appear in the dashboard after you apply them:
+
+```bash
+npx supabase login
+npx supabase link --project-ref <your-project-ref>
+npx supabase db push
+```
+
+Use the same **project ref** as in your project URL (`https://supabase.com/dashboard/project/<project-ref>`). Schema notes: [docs/DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md).
+
+After pushing migrations, apply the **storage** migration (`storage_recordings_policies`) so authenticated users can upload to the [`recordings` bucket](https://supabase.com/dashboard/project/_/storage/files/buckets/recordings) under `{user_id}/...`.
+
+**Home page recordings:** enable **Anonymous** sign-ins under **Authentication → Providers** (or sign in with another provider). The app signs in anonymously on load so Row Level Security can scope rows and storage paths to `auth.uid()`.
+
+## Supabase CLI (optional local stack)
+
+The [Supabase CLI](https://supabase.com/docs/guides/cli) is also available as a dev dependency. Local `db:start` / `db:reset` require Docker; skip this if you only use hosted Supabase.
 
 | Command | Purpose |
 |--------|---------|

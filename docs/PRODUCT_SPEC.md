@@ -97,19 +97,21 @@ Represents the user-visible grouped unit.
 | Field | Notes |
 |---|---|
 | `id` | |
+| `user_id` | Owner (`auth.users`) |
 | `title` | Or derived label |
 | `transcript_strategy` | Combined transcript strategy |
 | `metadata` | |
-| `project_id` | Nullable |
+| `project_id` | Nullable FK → `recording_projects` |
 | `created_at` | |
 | `updated_at` | |
 
-### `projects`
-Represents a collection of recording items.
+### `recording_projects`
+Represents a collection of recording items (database table name; product term “recording project”).
 
 | Field | Notes |
 |---|---|
 | `id` | |
+| `user_id` | Owner (`auth.users`) |
 | `name` | |
 | `summary` | |
 | `metadata` | |
