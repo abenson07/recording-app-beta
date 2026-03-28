@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="recording_notification_title">Recording</string>
+    <string name="recording_notification_text">Audio recording in progress</string>
+    <string name="recording_notification_stop">Stop</string>
+</resources>
