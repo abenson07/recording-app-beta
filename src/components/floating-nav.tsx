@@ -33,11 +33,11 @@ export function FloatingNav({ centerHref, onUploadClick }: Props) {
       className="pointer-events-none fixed bottom-0 left-1/2 z-20 w-full max-w-[430px] -translate-x-1/2 px-5 pb-6 pt-4"
       aria-label="Main"
     >
-      <div className="pointer-events-auto mx-auto w-full max-w-[320px] rounded-full border border-white/30 bg-[#FADFD0]/90 px-1.5 py-1.5 shadow-lg shadow-black/10 backdrop-blur-md">
+      <div className="pointer-events-auto mx-auto w-full max-w-[320px] rounded-full border border-white/20 bg-black/95 px-1.5 py-1.5 shadow-lg shadow-black/30 backdrop-blur-md">
         <div className="relative h-11 w-full">
-          {/* Sliding active indicator — translateX % is relative to pill width (= 1/4 of track) */}
+          {/* Sliding active indicator (1/4 width for 4 tabs) */}
           <div
-            className="absolute inset-y-0 left-0 w-1/4 rounded-xl bg-[#D35400] shadow-md transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none"
+            className="absolute bottom-0 left-0 h-[2px] w-1/4 rounded-full bg-[#D35400] transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none"
             style={{
               transform: showPill
                 ? `translateX(calc(${activeIndex} * 100%))`
@@ -51,7 +51,9 @@ export function FloatingNav({ centerHref, onUploadClick }: Props) {
             <Link
               href="/"
               className={`flex items-center justify-center rounded-xl transition-colors duration-200 ${
-                activeIndex === 0 ? "text-white" : "text-[#C2410C] hover:text-[#9a3412]"
+                activeIndex === 0
+                  ? "text-[#D35400]"
+                  : "text-white hover:text-white/80"
               }`}
               aria-current={activeIndex === 0 ? "page" : undefined}
             >
@@ -62,7 +64,9 @@ export function FloatingNav({ centerHref, onUploadClick }: Props) {
             <Link
               href="/projects"
               className={`flex items-center justify-center rounded-xl transition-colors duration-200 ${
-                activeIndex === 1 ? "text-white" : "text-[#C2410C] hover:text-[#9a3412]"
+                activeIndex === 1
+                  ? "text-[#D35400]"
+                  : "text-white hover:text-white/80"
               }`}
               aria-current={activeIndex === 1 ? "page" : undefined}
             >
@@ -73,7 +77,9 @@ export function FloatingNav({ centerHref, onUploadClick }: Props) {
             <Link
               href="/recordings"
               className={`flex items-center justify-center rounded-xl transition-colors duration-200 ${
-                activeIndex === 2 ? "text-white" : "text-[#C2410C] hover:text-[#9a3412]"
+                activeIndex === 2
+                  ? "text-[#D35400]"
+                  : "text-white hover:text-white/80"
               }`}
               aria-current={activeIndex === 2 ? "page" : undefined}
             >
@@ -85,7 +91,9 @@ export function FloatingNav({ centerHref, onUploadClick }: Props) {
               <Link
                 href={centerHref}
                 className={`flex items-center justify-center rounded-xl transition-colors duration-200 ${
-                  activeIndex === 3 ? "text-white" : "text-[#C2410C] hover:text-[#9a3412]"
+                  activeIndex === 3
+                    ? "text-[#D35400]"
+                    : "text-white hover:text-white/80"
                 }`}
                 aria-label="Add recording"
               >
@@ -96,7 +104,9 @@ export function FloatingNav({ centerHref, onUploadClick }: Props) {
                 type="button"
                 onClick={onUploadClick}
                 className={`flex items-center justify-center rounded-xl transition-colors duration-200 ${
-                  activeIndex === 3 ? "text-white" : "text-[#C2410C] hover:text-[#9a3412]"
+                  activeIndex === 3
+                    ? "text-[#D35400]"
+                    : "text-white hover:text-white/80"
                 }`}
                 aria-label="Upload recording"
               >
