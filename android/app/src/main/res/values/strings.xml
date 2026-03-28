@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">RecordingAppBeta</string>
+    <string name="title_activity_main">RecordingAppBeta</string>
+    <string name="package_name">com.example.recordingappbeta</string>
+    <string name="custom_url_scheme">com.example.recordingappbeta</string>
+</resources>
