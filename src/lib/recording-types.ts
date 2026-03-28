@@ -42,3 +42,38 @@ export function formatDuration(sec: number): string {
   }
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
+
+/** Compact clock for list subtitles, e.g. `2:49` or `1:05:03`. */
+export function formatDurationClock(sec: number): string {
+  if (!Number.isFinite(sec) || sec <= 0) return "—";
+  const total = Math.floor(sec);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const mm = h > 0 ? String(m).padStart(2, "0") : String(m);
+  const ss = String(s).padStart(2, "0");
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+export function formatRelativeTime(iso: string): string {
+  try {
+    const t = new Date(iso).getTime();
+    if (Number.isNaN(t)) return "";
+    const diffMs = Date.now() - t;
+    const sec = Math.floor(diffMs / 1000);
+    if (sec < 10) return "Just now";
+    if (sec < 60) return `${sec}s ago`;
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min} min ago`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr}h ago`;
+    const day = Math.floor(hr / 24);
+    if (day < 7) return `${day}d ago`;
+    return new Date(iso).toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+    });
+  } catch {
+    return "";
+  }
+}

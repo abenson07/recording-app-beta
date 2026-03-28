@@ -2,13 +2,16 @@
 
 import { createClient } from "@/lib/supabase/client";
 import type {
-  RecordingFileRow,
   RecordingItemRow,
   RecordingProjectRow,
 } from "@/lib/recording-types";
+import { persistRecordingBlob as persistRecordingBlobCore } from "@/lib/persist-recording";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+
+/** Mic Start/Stop is hidden in the UI when false; upload + DB pipeline unchanged. */
+const SHOW_MIC_RECORDING = false;
 
 function combinedTranscript(item: RecordingItemRow): string {
   const files = [...(item.recording_files ?? [])].sort(
@@ -16,12 +19,6 @@ function combinedTranscript(item: RecordingItemRow): string {
   );
   const parts = files.map((f) => f.transcript?.trim()).filter(Boolean);
   return parts.join("\n\n");
-}
-
-function nextSequenceIndex(files: RecordingFileRow[] | null | undefined): number {
-  const list = files ?? [];
-  if (list.length === 0) return 0;
-  return Math.max(...list.map((f) => f.sequence_index)) + 1;
 }
 
 function ItemCard({
@@ -32,6 +29,7 @@ function ItemCard({
   appendToItemId,
   onAppend,
   onProjectChange,
+  micRecordingEnabled,
 }: {
   item: RecordingItemRow;
   projects: RecordingProjectRow[];
@@ -40,6 +38,7 @@ function ItemCard({
   appendToItemId: string | null;
   onAppend: () => void;
   onProjectChange: (projectId: string | null) => void;
+  micRecordingEnabled: boolean;
 }) {
   const transcript = combinedTranscript(item);
   const segments = item.recording_files?.length ?? 0;
@@ -87,7 +86,9 @@ function ItemCard({
         </button>
         {appendToItemId === item.id ? (
           <span className="self-center text-xs text-amber-200/90">
-            Use Record above, then Start segment
+            {micRecordingEnabled
+              ? "Use Record above, then Start segment"
+              : "Use Add recording above to upload another segment."}
           </span>
         ) : null}
       </div>
@@ -177,7 +178,6 @@ export function RecordingApp() {
     await Promise.all([loadProjects(), loadItems()]);
   }, [loadProjects, loadItems]);
 
-  /** Shared by mic recording stop and file upload — same storage path, DB rows, project/segment rules. */
   const persistRecordingBlob = useCallback(
     async (
       blob: Blob,
@@ -185,110 +185,21 @@ export function RecordingApp() {
         contentType: string;
         durationSec: number | null;
         captureType: string;
-        /** New recording item title; ignored when appending a segment. */
         newItemTitle?: string;
       },
     ): Promise<boolean> => {
       setRecordError(null);
       const supabase = createClient();
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError || !user) {
-        setRecordError("Not signed in");
-        return false;
-      }
-
-      const mime =
-        options.contentType || blob.type || "application/octet-stream";
-      const ext = mime.includes("webm")
-        ? "webm"
-        : mime.includes("mp4") || mime.includes("m4a")
-          ? "m4a"
-          : mime.includes("mpeg") || mime.includes("mp3")
-            ? "mp3"
-            : mime.includes("wav")
-              ? "wav"
-              : mime.includes("ogg")
-                ? "ogg"
-                : mime.includes("flac")
-                  ? "flac"
-                  : "bin";
-
-      const fileId = crypto.randomUUID();
-      const storagePath = `${user.id}/${fileId}.${ext}`;
-
-      const { error: upErr } = await supabase.storage
-        .from("recordings")
-        .upload(storagePath, blob, {
-          contentType: mime,
-          upsert: false,
-        });
-
-      if (upErr) {
-        setRecordError(upErr.message);
-        return false;
-      }
-
-      let targetItemId: string;
-      let sequenceIndex: number;
-
-      if (appendToItemId) {
-        const target = items.find((i) => i.id === appendToItemId);
-        if (!target) {
-          setRecordError("Could not find that recording item. Try refreshing.");
-          return false;
-        }
-        targetItemId = appendToItemId;
-        sequenceIndex = nextSequenceIndex(target.recording_files);
-      } else {
-        const title =
-          options.newItemTitle ??
-          `Recording ${new Date().toLocaleString(undefined, {
-            dateStyle: "medium",
-            timeStyle: "short",
-          })}`;
-
-        const projectId =
-          newItemProjectId && projects.some((p) => p.id === newItemProjectId)
-            ? newItemProjectId
-            : null;
-
-        const { data: itemRow, error: itemErr } = await supabase
-          .from("recording_items")
-          .insert({
-            user_id: user.id,
-            title,
-            ...(projectId ? { project_id: projectId } : {}),
-          })
-          .select("id")
-          .single();
-
-        if (itemErr || !itemRow) {
-          setRecordError(itemErr?.message ?? "Failed to create recording item");
-          return false;
-        }
-
-        targetItemId = itemRow.id;
-        sequenceIndex = 0;
-      }
-
-      const { error: fileErr } = await supabase.from("recording_files").insert({
-        recording_item_id: targetItemId,
-        sequence_index: sequenceIndex,
-        storage_path: storagePath,
-        transcript: "",
-        duration: options.durationSec,
-        capture_type: options.captureType,
+      const result = await persistRecordingBlobCore(supabase, blob, options, {
+        appendToItemId,
+        items,
+        newItemProjectId,
+        projects,
       });
-
-      if (fileErr) {
-        setRecordError(fileErr.message);
+      if (!result.ok) {
+        setRecordError(result.error);
         return false;
       }
-
       setAppendToItemId(null);
       await loadData();
       return true;
@@ -593,12 +504,18 @@ export function RecordingApp() {
               Switch to new item
             </button>
           </p>
-        ) : (
+        ) : SHOW_MIC_RECORDING ? (
           <p className="text-sm text-zinc-500">
             Start a <strong className="text-zinc-400">new recording item</strong>, or use{" "}
             <strong className="text-zinc-400">Add segment</strong> on an item below to append audio
             to that item only. Use <strong className="text-zinc-400">Record in project</strong>{" "}
             above to target a project.
+          </p>
+        ) : (
+          <p className="text-sm text-zinc-500">
+            <strong className="text-zinc-400">Add recording</strong> uploads a file. Choose a
+            project below, or use <strong className="text-zinc-400">Add segment</strong> on an item
+            to append to that item. Microphone capture is disabled in the UI for now.
           </p>
         )}
         {!authReady && !authError ? (
@@ -629,10 +546,12 @@ export function RecordingApp() {
             .
           </p>
         ) : null}
-        <p className="text-sm text-zinc-500">
-          <strong className="text-zinc-400">Upload</strong> uses the same rules: new item (and
-          project) or add segment when an item is in segment mode.
-        </p>
+        {SHOW_MIC_RECORDING ? (
+          <p className="text-sm text-zinc-500">
+            <strong className="text-zinc-400">Upload</strong> uses the same rules: new item (and
+            project) or add segment when an item is in segment mode.
+          </p>
+        ) : null}
         <div className="flex flex-wrap gap-3">
           <input
             ref={uploadInputRef}
@@ -643,25 +562,31 @@ export function RecordingApp() {
           />
           {recordPhase === "idle" ? (
             <>
-              <button
-                type="button"
-                onClick={startRecording}
-                disabled={!authReady || recordPhase !== "idle"}
-                className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950 disabled:opacity-40"
-              >
-                {appendToItemId ? "Start segment" : "Start new item"}
-              </button>
+              {SHOW_MIC_RECORDING ? (
+                <button
+                  type="button"
+                  onClick={startRecording}
+                  disabled={!authReady || recordPhase !== "idle"}
+                  className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950 disabled:opacity-40"
+                >
+                  {appendToItemId ? "Start segment" : "Start new item"}
+                </button>
+              ) : null}
               <button
                 type="button"
                 disabled={!authReady}
                 onClick={() => uploadInputRef.current?.click()}
-                className="rounded-lg border border-zinc-600 bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-100 disabled:opacity-40"
+                className={
+                  SHOW_MIC_RECORDING
+                    ? "rounded-lg border border-zinc-600 bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-100 disabled:opacity-40"
+                    : "rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950 disabled:opacity-40"
+                }
               >
-                Upload file
+                {SHOW_MIC_RECORDING ? "Upload file" : "Add recording"}
               </button>
             </>
           ) : null}
-          {recordPhase === "recording" ? (
+          {SHOW_MIC_RECORDING && recordPhase === "recording" ? (
             <button
               type="button"
               onClick={stopRecording}
@@ -714,6 +639,7 @@ export function RecordingApp() {
                             onProjectChange={(projectId) =>
                               setItemProject(item.id, projectId)
                             }
+                            micRecordingEnabled={SHOW_MIC_RECORDING}
                           />
                         ))}
                       </ul>
@@ -723,7 +649,7 @@ export function RecordingApp() {
                     <p className="text-sm text-zinc-500">
                       No recording items yet. Choose a project with{" "}
                       <strong className="text-zinc-400">Record in project</strong> or set{" "}
-                      <strong className="text-zinc-400">New items go into</strong>, then start
+                      <strong className="text-zinc-400">New items go into</strong>, then add a
                       recording.
                     </p>
                   ) : null}
@@ -769,6 +695,7 @@ export function RecordingApp() {
                                 onProjectChange={(projectId) =>
                                   setItemProject(item.id, projectId)
                                 }
+                                micRecordingEnabled={SHOW_MIC_RECORDING}
                               />
                             ))}
                           </ul>

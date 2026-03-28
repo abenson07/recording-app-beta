@@ -1,7 +1,6 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
-import { persistRecordingBlob } from "@/lib/persist-recording";
 import { useRecordingSession } from "@/lib/use-recording-session";
 import type {
   RecordingItemRow,
@@ -19,14 +18,11 @@ import {
   AppSectionLabel,
 } from "@/components/app-screen";
 import { FloatingNav } from "@/components/floating-nav";
-import {
-  FolderGlyph,
-  ListRowCardLink,
-  WaveformGlyph,
-} from "@/components/list-row-card";
+import { ListRowCardLink, WaveformGlyph } from "@/components/list-row-card";
+import { persistRecordingBlob } from "@/lib/persist-recording";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export function HomeView() {
+export function AllRecordingsView() {
   const { ready: authReady, authError } = useRecordingSession();
   const [projects, setProjects] = useState<RecordingProjectRow[]>([]);
   const [items, setItems] = useState<RecordingItemRow[]>([]);
@@ -34,7 +30,7 @@ export function HomeView() {
   const [greetingName, setGreetingName] = useState("there");
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const homeUploadRef = useRef<HTMLInputElement>(null);
+  const uploadRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -71,7 +67,7 @@ export function HomeView() {
     setLoading(false);
   }, []);
 
-  const handleHomeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file || !authReady) return;
@@ -108,12 +104,6 @@ export function HomeView() {
     load();
   }, [authReady, load]);
 
-  const itemsByProjectCount = (projectId: string) =>
-    items.filter((i) => i.project_id === projectId).length;
-
-  const recentRecordings = items.slice(0, 8);
-  const recentProjects = projects.slice(0, 6);
-
   if (authError) {
     return (
       <div className="flex flex-1 flex-col px-5 py-10">
@@ -136,83 +126,57 @@ export function HomeView() {
     <div className="flex min-h-dvh flex-1 flex-col bg-[#1A1A1A]">
       <AppScreenHeader
         greeting={`Hello ${greetingName},`}
-        title="What are we discussing today?"
+        title="All Recordings"
       />
 
       <AppContentSheet>
+        <AppSectionLabel>All recordings</AppSectionLabel>
+
         {uploadError ? (
           <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
             {uploadError}
           </p>
         ) : null}
 
-        <section className="flex flex-col gap-3">
-          <AppSectionLabel>Recent musings</AppSectionLabel>
-          <ul className="flex flex-col gap-3">
-            {!authReady || loading ? (
-              <li className="text-sm text-neutral-500">Loading…</li>
-            ) : recentRecordings.length === 0 ? (
-              <li className="rounded-2xl bg-white/80 px-4 py-4 text-sm text-neutral-600 ring-1 ring-black/[0.06]">
-                No recordings yet. Use the upload button below to add one.
-              </li>
-            ) : (
-              recentRecordings.map((item) => {
-                const touchIso = item.updated_at ?? item.created_at;
-                const segs = segmentCount(item);
-                const dur = formatDurationClock(totalDurationSec(item));
-                return (
-                  <li key={item.id}>
-                    <ListRowCardLink
-                      href={`/recording/${item.id}`}
-                      title={item.title ?? "Untitled"}
-                      subtitle={`${formatRelativeTime(touchIso)} · ${dur} · ${segs} segment${segs === 1 ? "" : "s"}`}
-                      icon={<WaveformGlyph />}
-                    />
-                  </li>
-                );
-              })
-            )}
-          </ul>
-        </section>
-
-        <section className="flex flex-col gap-3">
-          <AppSectionLabel>Active projects</AppSectionLabel>
-          <ul className="flex flex-col gap-3">
-            {!authReady || loading ? (
-              <li className="text-sm text-neutral-500">Loading…</li>
-            ) : recentProjects.length === 0 ? (
-              <li className="rounded-2xl bg-white/80 px-4 py-4 text-sm text-neutral-600 ring-1 ring-black/[0.06]">
-                No projects yet. Create one from the Record screen, or they appear when you organize recordings.
-              </li>
-            ) : (
-              recentProjects.map((p) => {
-                const n = itemsByProjectCount(p.id);
-                return (
-                  <li key={p.id}>
-                    <ListRowCardLink
-                      href={`/project/${p.id}`}
-                      title={p.name}
-                      subtitle={`${formatRelativeTime(p.created_at)} · ${n} recording${n === 1 ? "" : "s"}`}
-                      icon={<FolderGlyph />}
-                    />
-                  </li>
-                );
-              })
-            )}
-          </ul>
-        </section>
+        <ul className="flex flex-col gap-3">
+          {loading ? (
+            <li className="text-sm text-neutral-500">Loading…</li>
+          ) : items.length === 0 ? (
+            <li className="rounded-2xl bg-white/80 px-4 py-4 text-sm text-neutral-600 ring-1 ring-black/[0.06]">
+              No recordings yet. Tap the upload button below to add one.
+            </li>
+          ) : (
+            items.map((item) => {
+              const touchIso = item.updated_at ?? item.created_at;
+              const segs = segmentCount(item);
+              const dur = formatDurationClock(totalDurationSec(item));
+              const project = projects.find((p) => p.id === item.project_id);
+              const subtitle = `${formatRelativeTime(touchIso)} · ${dur} · ${segs} segment${segs === 1 ? "" : "s"}${project ? ` · ${project.name}` : ""}`;
+              return (
+                <li key={item.id}>
+                  <ListRowCardLink
+                    href={`/recording/${item.id}`}
+                    title={item.title ?? "Untitled"}
+                    subtitle={subtitle}
+                    icon={<WaveformGlyph />}
+                  />
+                </li>
+              );
+            })
+          )}
+        </ul>
       </AppContentSheet>
 
       <input
-        ref={homeUploadRef}
+        ref={uploadRef}
         type="file"
         className="sr-only"
         accept="audio/*,video/*,.mp3,.wav,.m4a,.aac,.flac,.ogg"
-        onChange={handleHomeUpload}
+        onChange={handleUpload}
       />
       <FloatingNav
         onUploadClick={() => {
-          if (!uploading) homeUploadRef.current?.click();
+          if (!uploading) uploadRef.current?.click();
         }}
       />
     </div>
