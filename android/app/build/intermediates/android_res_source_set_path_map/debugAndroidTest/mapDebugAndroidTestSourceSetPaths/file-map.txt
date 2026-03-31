@@ -1,0 +1,5 @@
+com.example.recordingappbeta.test.app-androidTest-0 /Users/alexbenson/Repos/recording-app-beta/android/app/build/generated/res/resValues/androidTest/debug
+com.example.recordingappbeta.test.app-updated_navigation_xml-1 /Users/alexbenson/Repos/recording-app-beta/android/app/build/generated/updated_navigation_xml/debugAndroidTest
+com.example.recordingappbeta.test.app-mergeDebugAndroidTestResources-2 /Users/alexbenson/Repos/recording-app-beta/android/app/build/intermediates/incremental/debugAndroidTest/mergeDebugAndroidTestResources/merged.dir
+com.example.recordingappbeta.test.app-mergeDebugAndroidTestResources-3 /Users/alexbenson/Repos/recording-app-beta/android/app/build/intermediates/incremental/debugAndroidTest/mergeDebugAndroidTestResources/stripped.dir
+com.example.recordingappbeta.test.app-debugAndroidTest-4 /Users/alexbenson/Repos/recording-app-beta/android/app/build/intermediates/merged_res/debugAndroidTest/mergeDebugAndroidTestResources
