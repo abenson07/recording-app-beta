@@ -122,6 +122,8 @@ export function RecordingApp() {
   const [projectError, setProjectError] = useState<string | null>(null);
   /** New recording items (not segments) get this project_id when set. */
   const [newItemProjectId, setNewItemProjectId] = useState<string>("");
+  /** File upload UI is hidden on Capacitor Android (native mic only). */
+  const [showFileUpload, setShowFileUpload] = useState(true);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -178,6 +180,10 @@ export function RecordingApp() {
   const loadData = useCallback(async () => {
     await Promise.all([loadProjects(), loadItems()]);
   }, [loadProjects, loadItems]);
+
+  useEffect(() => {
+    setShowFileUpload(!isAndroidCapacitor());
+  }, []);
 
   const persistRecordingBlob = useCallback(
     async (
@@ -524,12 +530,23 @@ export function RecordingApp() {
             </button>
           </p>
         ) : SHOW_MIC_RECORDING ? (
-          <p className="text-sm text-zinc-500">
-            Start a <strong className="text-zinc-400">new recording item</strong>, or use{" "}
-            <strong className="text-zinc-400">Add segment</strong> on an item below to append audio
-            to that item only. Use <strong className="text-zinc-400">Record in project</strong>{" "}
-            above to target a project.
-          </p>
+          showFileUpload ? (
+            <p className="text-sm text-zinc-500">
+              Start a <strong className="text-zinc-400">new recording item</strong>, or use{" "}
+              <strong className="text-zinc-400">Add segment</strong> on an item below to append
+              audio to that item only. Use{" "}
+              <strong className="text-zinc-400">Record in project</strong> above to target a
+              project.
+            </p>
+          ) : (
+            <p className="text-sm text-zinc-500">
+              Use <strong className="text-zinc-400">Start new item</strong> to record, then{" "}
+              <strong className="text-zinc-400">Stop & save</strong>. Use{" "}
+              <strong className="text-zinc-400">Add segment</strong> on an item below to append, or{" "}
+              <strong className="text-zinc-400">Record in project</strong> above to pick a project
+              first.
+            </p>
+          )
         ) : (
           <p className="text-sm text-zinc-500">
             <strong className="text-zinc-400">Add recording</strong> uploads a file. Choose a
@@ -565,20 +582,22 @@ export function RecordingApp() {
             .
           </p>
         ) : null}
-        {SHOW_MIC_RECORDING ? (
+        {SHOW_MIC_RECORDING && showFileUpload ? (
           <p className="text-sm text-zinc-500">
             <strong className="text-zinc-400">Upload</strong> uses the same rules: new item (and
             project) or add segment when an item is in segment mode.
           </p>
         ) : null}
         <div className="flex flex-wrap gap-3">
-          <input
-            ref={uploadInputRef}
-            type="file"
-            className="sr-only"
-            accept="audio/*,video/*,.mp3,.wav,.m4a,.aac,.flac,.ogg"
-            onChange={handleUploadFile}
-          />
+          {showFileUpload ? (
+            <input
+              ref={uploadInputRef}
+              type="file"
+              className="sr-only"
+              accept="audio/*,video/*,.mp3,.wav,.m4a,.aac,.flac,.ogg"
+              onChange={handleUploadFile}
+            />
+          ) : null}
           {recordPhase === "idle" ? (
             <>
               {SHOW_MIC_RECORDING ? (
@@ -591,18 +610,20 @@ export function RecordingApp() {
                   {appendToItemId ? "Start segment" : "Start new item"}
                 </button>
               ) : null}
-              <button
-                type="button"
-                disabled={!authReady}
-                onClick={() => uploadInputRef.current?.click()}
-                className={
-                  SHOW_MIC_RECORDING
-                    ? "rounded-lg border border-zinc-600 bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-100 disabled:opacity-40"
-                    : "rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950 disabled:opacity-40"
-                }
-              >
-                {SHOW_MIC_RECORDING ? "Upload file" : "Add recording"}
-              </button>
+              {!SHOW_MIC_RECORDING || showFileUpload ? (
+                <button
+                  type="button"
+                  disabled={!authReady}
+                  onClick={() => uploadInputRef.current?.click()}
+                  className={
+                    SHOW_MIC_RECORDING
+                      ? "rounded-lg border border-zinc-600 bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-100 disabled:opacity-40"
+                      : "rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950 disabled:opacity-40"
+                  }
+                >
+                  {SHOW_MIC_RECORDING ? "Upload file" : "Add recording"}
+                </button>
+              ) : null}
             </>
           ) : null}
           {SHOW_MIC_RECORDING && recordPhase === "recording" ? (

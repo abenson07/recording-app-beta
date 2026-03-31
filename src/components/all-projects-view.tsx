@@ -11,8 +11,7 @@ import {
 } from "@/components/app-screen";
 import { FloatingNav } from "@/components/floating-nav";
 import { FolderGlyph, ListRowCardLink } from "@/components/list-row-card";
-import { persistRecordingBlob } from "@/lib/persist-recording";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 export function AllProjectsView() {
   const { ready: authReady, authError } = useRecordingSession();
@@ -22,10 +21,6 @@ export function AllProjectsView() {
   >([]);
   const [loading, setLoading] = useState(true);
   const [greetingName, setGreetingName] = useState("there");
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const uploadRef = useRef<HTMLInputElement>(null);
-
   const load = useCallback(async () => {
     const supabase = createClient();
     const { data: sessionData } = await supabase.auth.getSession();
@@ -55,38 +50,6 @@ export function AllProjectsView() {
     setItemProjectIds((itemsRes.data as { project_id: string | null }[]) ?? []);
     setLoading(false);
   }, []);
-
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file || !authReady) return;
-
-    setUploadError(null);
-    setUploading(true);
-    const supabase = createClient();
-    const result = await persistRecordingBlob(
-      supabase,
-      file,
-      {
-        contentType: file.type || "application/octet-stream",
-        durationSec: null,
-        captureType: "file_upload",
-        newItemTitle: `Upload · ${file.name}`,
-      },
-      {
-        appendToItemId: null,
-        items: [],
-        newItemProjectId: "",
-        projects,
-      },
-    );
-    setUploading(false);
-    if (!result.ok) {
-      setUploadError(result.error);
-      return;
-    }
-    await load();
-  };
 
   useEffect(() => {
     if (!authReady) return;
@@ -124,18 +87,13 @@ export function AllProjectsView() {
       <AppContentSheet>
         <AppSectionLabel>All projects</AppSectionLabel>
 
-        {uploadError ? (
-          <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-            {uploadError}
-          </p>
-        ) : null}
-
         <ul className="flex flex-col gap-3">
           {loading ? (
             <li className="text-sm text-neutral-500">Loading…</li>
           ) : projects.length === 0 ? (
             <li className="rounded-2xl bg-white/80 px-4 py-4 text-sm text-neutral-600 ring-1 ring-black/[0.06]">
-              No projects yet. Upload a recording from home or use Record to create one.
+              No projects yet. Use <strong className="font-medium text-neutral-800">Record</strong>{" "}
+              below to create recordings and projects.
             </li>
           ) : (
             projects.map((p) => {
@@ -143,7 +101,7 @@ export function AllProjectsView() {
               return (
                 <li key={p.id}>
                   <ListRowCardLink
-                    href={`/project/${p.id}`}
+                    href={`/project/view?id=${encodeURIComponent(p.id)}`}
                     title={p.name}
                     subtitle={`${formatRelativeTime(p.created_at)} · ${n} recording${n === 1 ? "" : "s"}`}
                     icon={<FolderGlyph />}
@@ -155,18 +113,7 @@ export function AllProjectsView() {
         </ul>
       </AppContentSheet>
 
-      <input
-        ref={uploadRef}
-        type="file"
-        className="sr-only"
-        accept="audio/*,video/*,.mp3,.wav,.m4a,.aac,.flac,.ogg"
-        onChange={handleUpload}
-      />
-      <FloatingNav
-        onUploadClick={() => {
-          if (!uploading) uploadRef.current?.click();
-        }}
-      />
+      <FloatingNav centerHref="/record" />
     </div>
   );
 }

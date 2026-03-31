@@ -19,8 +19,7 @@ import {
 } from "@/components/app-screen";
 import { FloatingNav } from "@/components/floating-nav";
 import { ListRowCardLink, WaveformGlyph } from "@/components/list-row-card";
-import { persistRecordingBlob } from "@/lib/persist-recording";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 export function AllRecordingsView() {
   const { ready: authReady, authError } = useRecordingSession();
@@ -28,10 +27,6 @@ export function AllRecordingsView() {
   const [items, setItems] = useState<RecordingItemRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [greetingName, setGreetingName] = useState("there");
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const uploadRef = useRef<HTMLInputElement>(null);
-
   const load = useCallback(async () => {
     const supabase = createClient();
     const { data: sessionData } = await supabase.auth.getSession();
@@ -67,38 +62,6 @@ export function AllRecordingsView() {
     setLoading(false);
   }, []);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file || !authReady) return;
-
-    setUploadError(null);
-    setUploading(true);
-    const supabase = createClient();
-    const result = await persistRecordingBlob(
-      supabase,
-      file,
-      {
-        contentType: file.type || "application/octet-stream",
-        durationSec: null,
-        captureType: "file_upload",
-        newItemTitle: `Upload · ${file.name}`,
-      },
-      {
-        appendToItemId: null,
-        items,
-        newItemProjectId: "",
-        projects,
-      },
-    );
-    setUploading(false);
-    if (!result.ok) {
-      setUploadError(result.error);
-      return;
-    }
-    await load();
-  };
-
   useEffect(() => {
     if (!authReady) return;
     load();
@@ -132,18 +95,13 @@ export function AllRecordingsView() {
       <AppContentSheet>
         <AppSectionLabel>All recordings</AppSectionLabel>
 
-        {uploadError ? (
-          <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-            {uploadError}
-          </p>
-        ) : null}
-
         <ul className="flex flex-col gap-3">
           {loading ? (
             <li className="text-sm text-neutral-500">Loading…</li>
           ) : items.length === 0 ? (
             <li className="rounded-2xl bg-white/80 px-4 py-4 text-sm text-neutral-600 ring-1 ring-black/[0.06]">
-              No recordings yet. Tap the upload button below to add one.
+              No recordings yet. Open <strong className="font-medium text-neutral-800">Record</strong>{" "}
+              below to add one.
             </li>
           ) : (
             items.map((item) => {
@@ -155,7 +113,7 @@ export function AllRecordingsView() {
               return (
                 <li key={item.id}>
                   <ListRowCardLink
-                    href={`/recording/${item.id}`}
+                    href={`/recording/view?id=${encodeURIComponent(item.id)}`}
                     title={item.title ?? "Untitled"}
                     subtitle={subtitle}
                     icon={<WaveformGlyph />}
@@ -167,18 +125,7 @@ export function AllRecordingsView() {
         </ul>
       </AppContentSheet>
 
-      <input
-        ref={uploadRef}
-        type="file"
-        className="sr-only"
-        accept="audio/*,video/*,.mp3,.wav,.m4a,.aac,.flac,.ogg"
-        onChange={handleUpload}
-      />
-      <FloatingNav
-        onUploadClick={() => {
-          if (!uploading) uploadRef.current?.click();
-        }}
-      />
+      <FloatingNav centerHref="/record" />
     </div>
   );
 }

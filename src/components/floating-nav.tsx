@@ -17,8 +17,8 @@ type Props = {
 
 function navActiveIndex(pathname: string): number {
   if (pathname === "/") return 0;
-  if (pathname === "/projects") return 1;
-  if (pathname === "/recordings") return 2;
+  if (pathname === "/projects" || pathname === "/project/view") return 1;
+  if (pathname === "/recordings" || pathname === "/recording/view") return 2;
   if (pathname === "/record") return 3;
   return -1;
 }

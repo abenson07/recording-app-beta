@@ -146,7 +146,7 @@ export function ProjectView({ projectId }: { projectId: string }) {
                 return (
                   <li key={item.id}>
                     <ListRowCardLink
-                      href={`/recording/${item.id}`}
+                      href={`/recording/view?id=${encodeURIComponent(item.id)}`}
                       title={item.title ?? "Untitled"}
                       subtitle={`${formatRelativeTime(touchIso)} · ${dur} · ${segs} segment${segs === 1 ? "" : "s"}`}
                       icon={<WaveformGlyph />}

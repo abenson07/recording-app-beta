@@ -1,5 +1,6 @@
 ext {
     minSdkVersion = 24
+    /* Use API 36: matches android-36.1 SDK folder via symlink android-36 → android-36.1 (see docs). */
     compileSdkVersion = 36
     targetSdkVersion = 34
     androidxActivityVersion = '1.11.0'

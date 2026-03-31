@@ -1,7 +1,6 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
-import { persistRecordingBlob } from "@/lib/persist-recording";
 import { useRecordingSession } from "@/lib/use-recording-session";
 import type {
   RecordingItemRow,
@@ -24,7 +23,7 @@ import {
   ListRowCardLink,
   WaveformGlyph,
 } from "@/components/list-row-card";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 export function HomeView() {
   const { ready: authReady, authError } = useRecordingSession();
@@ -32,10 +31,6 @@ export function HomeView() {
   const [items, setItems] = useState<RecordingItemRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [greetingName, setGreetingName] = useState("there");
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const homeUploadRef = useRef<HTMLInputElement>(null);
-
   const load = useCallback(async () => {
     const supabase = createClient();
     const { data: sessionData } = await supabase.auth.getSession();
@@ -70,38 +65,6 @@ export function HomeView() {
     setItems((itemsRes.data as RecordingItemRow[]) ?? []);
     setLoading(false);
   }, []);
-
-  const handleHomeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file || !authReady) return;
-
-    setUploadError(null);
-    setUploading(true);
-    const supabase = createClient();
-    const result = await persistRecordingBlob(
-      supabase,
-      file,
-      {
-        contentType: file.type || "application/octet-stream",
-        durationSec: null,
-        captureType: "file_upload",
-        newItemTitle: `Upload · ${file.name}`,
-      },
-      {
-        appendToItemId: null,
-        items,
-        newItemProjectId: "",
-        projects,
-      },
-    );
-    setUploading(false);
-    if (!result.ok) {
-      setUploadError(result.error);
-      return;
-    }
-    await load();
-  };
 
   useEffect(() => {
     if (!authReady) return;
@@ -140,12 +103,6 @@ export function HomeView() {
       />
 
       <AppContentSheet>
-        {uploadError ? (
-          <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-            {uploadError}
-          </p>
-        ) : null}
-
         <section className="flex flex-col gap-3">
           <AppSectionLabel>Recent musings</AppSectionLabel>
           <ul className="flex flex-col gap-3">
@@ -153,7 +110,8 @@ export function HomeView() {
               <li className="text-sm text-neutral-500">Loading…</li>
             ) : recentRecordings.length === 0 ? (
               <li className="rounded-2xl bg-white/80 px-4 py-4 text-sm text-neutral-600 ring-1 ring-black/[0.06]">
-                No recordings yet. Use the upload button below to add one.
+                No recordings yet. Open <strong className="font-medium text-neutral-800">Record</strong>{" "}
+                below to add one.
               </li>
             ) : (
               recentRecordings.map((item) => {
@@ -163,7 +121,7 @@ export function HomeView() {
                 return (
                   <li key={item.id}>
                     <ListRowCardLink
-                      href={`/recording/${item.id}`}
+                      href={`/recording/view?id=${encodeURIComponent(item.id)}`}
                       title={item.title ?? "Untitled"}
                       subtitle={`${formatRelativeTime(touchIso)} · ${dur} · ${segs} segment${segs === 1 ? "" : "s"}`}
                       icon={<WaveformGlyph />}
@@ -190,7 +148,7 @@ export function HomeView() {
                 return (
                   <li key={p.id}>
                     <ListRowCardLink
-                      href={`/project/${p.id}`}
+                      href={`/project/view?id=${encodeURIComponent(p.id)}`}
                       title={p.name}
                       subtitle={`${formatRelativeTime(p.created_at)} · ${n} recording${n === 1 ? "" : "s"}`}
                       icon={<FolderGlyph />}
@@ -203,18 +161,7 @@ export function HomeView() {
         </section>
       </AppContentSheet>
 
-      <input
-        ref={homeUploadRef}
-        type="file"
-        className="sr-only"
-        accept="audio/*,video/*,.mp3,.wav,.m4a,.aac,.flac,.ogg"
-        onChange={handleHomeUpload}
-      />
-      <FloatingNav
-        onUploadClick={() => {
-          if (!uploading) homeUploadRef.current?.click();
-        }}
-      />
+      <FloatingNav centerHref="/record" />
     </div>
   );
 }

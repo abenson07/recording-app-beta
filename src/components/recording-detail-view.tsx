@@ -181,7 +181,7 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
             <>
               <span className="text-neutral-300">·</span>
               <Link
-                href={`/project/${project.id}`}
+                href={`/project/view?id=${encodeURIComponent(project.id)}`}
                 className="font-medium text-[#C2410C] hover:underline"
               >
                 {project.name}

@@ -44,7 +44,7 @@ The [Supabase CLI](https://supabase.com/docs/guides/cli) is also available as a 
 
 After `db:start`, copy **API URL** and **anon key** from `npm run db:status` into `.env.local` if you are developing against local Supabase.
 
-**Check connectivity:** with the dev server running (`npm run dev`), open or request `GET /api/health/supabase`. A JSON body with `"ok": true` means the app can reach Supabase with your env configuration.
+**Check connectivity:** with the dev server running (`npm run dev`), open the app (e.g. `/record`). If env vars are wrong, the UI shows an auth or Supabase error. This project uses a **static export** (`output: 'export'`), so there is no server `/api/health/*` route.
 
 ## Getting Started
 
@@ -61,6 +61,8 @@ bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+This app is configured for **static export** (`output: 'export'`). After `npm run build`, the static site is in `out/`. To preview that folder locally (e.g. before Capacitor sync), use any static file server, for example `npx serve out`.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
