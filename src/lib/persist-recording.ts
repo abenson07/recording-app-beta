@@ -33,15 +33,6 @@ export async function persistRecordingBlob(
   options: PersistRecordingOptions,
   ctx: PersistRecordingContext,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    return { ok: false, error: "Not signed in" };
-  }
-
   const mime = options.contentType || blob.type || "application/octet-stream";
   const ext = mime.includes("webm")
     ? "webm"
@@ -58,7 +49,7 @@ export async function persistRecordingBlob(
               : "bin";
 
   const fileId = crypto.randomUUID();
-  const storagePath = `${user.id}/${fileId}.${ext}`;
+  const storagePath = `${fileId}.${ext}`;
 
   const { error: upErr } = await supabase.storage
     .from("recordings")
@@ -101,7 +92,6 @@ export async function persistRecordingBlob(
     const { data: itemRow, error: itemErr } = await supabase
       .from("recording_items")
       .insert({
-        user_id: user.id,
         title,
         ...(projectId ? { project_id: projectId } : {}),
       })

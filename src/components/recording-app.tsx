@@ -109,8 +109,7 @@ export function RecordingApp() {
   const [projects, setProjects] = useState<RecordingProjectRow[]>([]);
   const [items, setItems] = useState<RecordingItemRow[]>([]);
   const [loadingList, setLoadingList] = useState(true);
-  const [authReady, setAuthReady] = useState(false);
-  const [authError, setAuthError] = useState<string | null>(null);
+  const authReady = true;
   /** When set, Stop & save appends a file to this item instead of creating a new item. */
   const [appendToItemId, setAppendToItemId] = useState<string | null>(null);
   const [recordPhase, setRecordPhase] = useState<"idle" | "recording" | "saving">(
@@ -130,11 +129,6 @@ export function RecordingApp() {
 
   const loadProjects = useCallback(async () => {
     const supabase = createClient();
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) {
-      setProjects([]);
-      return;
-    }
     const { data, error } = await supabase
       .from("recording_projects")
       .select("id, name, summary, created_at")
@@ -150,13 +144,6 @@ export function RecordingApp() {
 
   const loadItems = useCallback(async () => {
     const supabase = createClient();
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) {
-      setItems([]);
-      setLoadingList(false);
-      return;
-    }
-
     setLoadingList(true);
     const { data, error } = await supabase
       .from("recording_items")
@@ -209,61 +196,27 @@ export function RecordingApp() {
 
   /** Deep link: /record?project=id or /record?append=itemId */
   useEffect(() => {
-    const append = searchParams.get("append");
-    const project = searchParams.get("project");
-    if (append) {
-      setAppendToItemId(append);
-      setNewItemProjectId("");
-      return;
-    }
-    if (project) {
-      setNewItemProjectId(project);
-      setAppendToItemId(null);
-    }
+    const timer = window.setTimeout(() => {
+      const append = searchParams.get("append");
+      const project = searchParams.get("project");
+      if (append) {
+        setAppendToItemId(append);
+        setNewItemProjectId("");
+        return;
+      }
+      if (project) {
+        setNewItemProjectId(project);
+        setAppendToItemId(null);
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [searchParams]);
 
-  /** Source of truth for “can record” — avoids Strict Mode / async races leaving authReady stuck false. */
   useEffect(() => {
-    const supabase = createClient();
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setAuthReady(!!session);
-      if (session) setAuthError(null);
-    });
-    return () => subscription.unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      const supabase = createClient();
-      const { data: existing } = await supabase.auth.getSession();
-      if (existing.session) {
-        if (!cancelled) await loadData();
-        return;
-      }
-
-      const { error } = await supabase.auth.signInAnonymously();
-      if (cancelled) return;
-
-      if (error) {
-        setAuthError(
-          error.message.includes("Anonymous sign-ins are disabled")
-            ? "Turn on Anonymous sign-ins under Supabase → Authentication → Providers, then refresh."
-            : error.message,
-        );
-        setLoadingList(false);
-        return;
-      }
-
-      await loadData();
-    })();
-
-    return () => {
-      cancelled = true;
-    };
+    const timer = window.setTimeout(() => {
+      void loadData();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [loadData]);
 
   const startRecording = async () => {
@@ -359,16 +312,7 @@ export function RecordingApp() {
     if (!name) return;
 
     const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      setProjectError("Not signed in");
-      return;
-    }
-
     const { error } = await supabase.from("recording_projects").insert({
-      user_id: user.id,
       name,
     });
 
@@ -421,11 +365,6 @@ export function RecordingApp() {
           Group items into <strong className="text-zinc-300">recording projects</strong> or leave
           them unassigned. Transcripts show once added (speech-to-text can plug in later).
         </p>
-        {authError ? (
-          <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
-            {authError}
-          </p>
-        ) : null}
       </header>
 
       <section className="flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
@@ -518,9 +457,6 @@ export function RecordingApp() {
             to append to that item. Microphone capture is disabled in the UI for now.
           </p>
         )}
-        {!authReady && !authError ? (
-          <p className="text-sm text-zinc-500">Signing in…</p>
-        ) : null}
         <label className="flex flex-col gap-1.5 text-sm text-zinc-400">
           <span>New items go into</span>
           <select

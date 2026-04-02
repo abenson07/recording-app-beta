@@ -16,7 +16,7 @@ const ICON_EQUALIZER = "https://www.figma.com/api/mcp/asset/d87ebf13-3af2-4601-9
 const ICON_TIMER = "https://www.figma.com/api/mcp/asset/814a95be-8f70-46ec-8c64-1ff9a7ec562a";
 
 export function HomeView() {
-  const { ready: authReady, authError } = useRecordingSession();
+  useRecordingSession();
   const [projects, setProjects] = useState<RecordingProjectRow[]>([]);
   const [items, setItems] = useState<RecordingItemRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,14 +27,6 @@ export function HomeView() {
 
   const load = useCallback(async () => {
     const supabase = createClient();
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) {
-      setProjects([]);
-      setItems([]);
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
     const [projRes, itemsRes] = await Promise.all([
       supabase
@@ -57,7 +49,7 @@ export function HomeView() {
   const handleHomeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (!file || !authReady) return;
+    if (!file) return;
 
     setUploadError(null);
     setUploading(true);
@@ -87,17 +79,17 @@ export function HomeView() {
   };
 
   useEffect(() => {
-    if (!authReady) return;
     const timer = window.setTimeout(() => {
       void load();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [authReady, load]);
+  }, [load]);
 
   const itemsByProjectCount = useCallback(
     (projectId: string) => items.filter((i) => i.project_id === projectId).length,
     [items],
   );
+  const projectCount = projects.length;
 
   const recentActivity = [
     ...items.map((item) => ({
@@ -125,24 +117,6 @@ export function HomeView() {
 
   const itemById = new Map(items.map((item) => [item.id, item]));
 
-  if (authError) {
-    return (
-      <div className="flex flex-1 flex-col px-5 py-10">
-        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          {authError}
-        </p>
-      </div>
-    );
-  }
-
-  if (!authReady) {
-    return (
-      <div className="flex flex-1 items-center justify-center px-5 py-24">
-        <p className="text-sm text-black/60">Signing in...</p>
-      </div>
-    );
-  }
-
   return (
     <div className="relative flex min-h-dvh flex-1 flex-col bg-[#d7d5c8] px-4 pb-28 pt-24 text-[#1e1e1e]">
       <section>
@@ -163,7 +137,9 @@ export function HomeView() {
         >
           <div className="flex items-center gap-2">
             <img src={ICON_EQUALIZER} alt="" className="h-[18px] w-[18px]" />
-            <span>38 projects</span>
+            <span>
+              {projectCount} project{projectCount === 1 ? "" : "s"}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <img src={ICON_TIMER} alt="" className="h-[18px] w-[18px]" />
@@ -189,7 +165,7 @@ export function HomeView() {
           </p>
         ) : null}
 
-        {!authReady || loading ? (
+        {loading ? (
           <p className="text-sm text-black/55">Loading…</p>
         ) : recentActivity.length === 0 ? (
           <p className="rounded-[10px] bg-[#eae9e5] px-4 py-4 text-sm text-black/60">
@@ -204,6 +180,7 @@ export function HomeView() {
                     <ActivityCard
                       variant="recording"
                       state="open"
+                      onClick={() => setOpenRecordingId(null)}
                       title={entry.title}
                       subtitle={entry.subtitle}
                       summary={

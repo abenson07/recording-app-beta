@@ -1,11 +1,8 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  UploadGlyph,
-  WaveformGlyph,
-} from "@/components/list-row-card";
 
 type Props = {
   /** When set, upload slot navigates here instead of opening the file picker. */
@@ -17,6 +14,7 @@ function navActiveIndex(pathname: string): number {
   if (pathname === "/") return 0;
   if (pathname === "/record") return 1;
   if (pathname === "/projects") return 2;
+  if (pathname === "/project/new") return 3;
   return -1;
 }
 
@@ -42,7 +40,7 @@ export function FloatingNav({ centerHref, onUploadClick }: Props) {
             }`}
             aria-current={activeIndex === 0 ? "page" : undefined}
           >
-            <AirplayGlyph className="h-4 w-4" />
+            <NavIcon src="/icons/nav/home.svg" />
             <span className="sr-only">Home</span>
           </Link>
 
@@ -55,7 +53,7 @@ export function FloatingNav({ centerHref, onUploadClick }: Props) {
               aria-current={activeIndex === 1 ? "page" : undefined}
               aria-label="Add recording"
             >
-              <UploadGlyph className="h-4 w-4" />
+              <NavIcon src="/icons/nav/upload.svg" />
             </Link>
           ) : (
             <button
@@ -66,7 +64,7 @@ export function FloatingNav({ centerHref, onUploadClick }: Props) {
               }`}
               aria-label="Upload recording"
             >
-              <UploadGlyph className="h-4 w-4" />
+              <NavIcon src="/icons/nav/upload.svg" />
             </button>
           )}
 
@@ -77,8 +75,19 @@ export function FloatingNav({ centerHref, onUploadClick }: Props) {
             }`}
             aria-current={activeIndex === 2 ? "page" : undefined}
           >
-            <WaveformGlyph className="h-4 w-4" />
+            <NavIcon src="/icons/nav/projects.svg" />
             <span className="sr-only">All projects</span>
+          </Link>
+
+          <Link
+            href="/project/new"
+            className={`flex size-10 items-center justify-center rounded-[48px] transition-colors duration-200 ${
+              activeIndex === 3 ? "bg-white/20 text-[#f7f7f7]" : "text-[#f7f7f7] hover:bg-white/10"
+            }`}
+            aria-current={activeIndex === 3 ? "page" : undefined}
+            aria-label="New project"
+          >
+            <PlusGlyph className="h-4 w-4" />
           </Link>
         </div>
       </nav>
@@ -86,30 +95,28 @@ export function FloatingNav({ centerHref, onUploadClick }: Props) {
   );
 }
 
-function AirplayGlyph({ className = "h-6 w-6" }: { className?: string }) {
+function PlusGlyph({ className = "h-6 w-6" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
-        d="M6.2 4.5h11.6c1.05 0 1.9.85 1.9 1.9v7.6c0 1.05-.85 1.9-1.9 1.9H14.8"
+        d="M12 5.5v13M5.5 12h13"
         stroke="currentColor"
         strokeWidth="1.7"
         strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M9.2 15.9H6.2c-1.05 0-1.9-.85-1.9-1.9V6.4c0-1.05.85-1.9 1.9-1.9"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M12 12.3L8.1 17.6h7.8L12 12.3Z"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-        strokeLinejoin="round"
       />
     </svg>
+  );
+}
+
+function NavIcon({ src }: { src: string }) {
+  return (
+    <Image
+      src={src}
+      alt=""
+      width={18}
+      height={18}
+      aria-hidden
+      className="h-[18px] w-[18px]"
+    />
   );
 }

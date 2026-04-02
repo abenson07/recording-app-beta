@@ -10,7 +10,7 @@ import { persistRecordingBlob } from "@/lib/persist-recording";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export function AllProjectsView() {
-  const { ready: authReady, authError } = useRecordingSession();
+  useRecordingSession();
   const [projects, setProjects] = useState<RecordingProjectRow[]>([]);
   const [items, setItems] = useState<RecordingItemRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,14 +20,6 @@ export function AllProjectsView() {
 
   const load = useCallback(async () => {
     const supabase = createClient();
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) {
-      setProjects([]);
-      setItems([]);
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
     const [projRes, itemsRes] = await Promise.all([
       supabase
@@ -50,7 +42,7 @@ export function AllProjectsView() {
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (!file || !authReady) return;
+    if (!file) return;
 
     setUploadError(null);
     setUploading(true);
@@ -80,12 +72,11 @@ export function AllProjectsView() {
   };
 
   useEffect(() => {
-    if (!authReady) return;
     const timer = window.setTimeout(() => {
       void load();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [authReady, load]);
+  }, [load]);
 
   const projectRecordingCounts = items.reduce(
     (acc, item) => {
@@ -116,24 +107,6 @@ export function AllProjectsView() {
         at: Date.parse(item.updated_at ?? item.created_at),
       })),
   ].sort((a, b) => b.at - a.at);
-
-  if (authError) {
-    return (
-      <div className="flex flex-1 flex-col px-5 py-10">
-        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          {authError}
-        </p>
-      </div>
-    );
-  }
-
-  if (!authReady) {
-    return (
-      <div className="flex flex-1 items-center justify-center px-5 py-24">
-        <p className="text-sm text-black/60">Signing in...</p>
-      </div>
-    );
-  }
 
   return (
     <div className="relative flex min-h-dvh flex-1 flex-col bg-[#d7d5c8] px-4 pb-28 pt-24 text-[#1e1e1e]">
