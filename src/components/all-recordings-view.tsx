@@ -23,11 +23,11 @@ import { persistRecordingBlob } from "@/lib/persist-recording";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export function AllRecordingsView() {
-  const { ready: authReady, authError } = useRecordingSession();
+  useRecordingSession();
+  const greetingName = "there";
   const [projects, setProjects] = useState<RecordingProjectRow[]>([]);
   const [items, setItems] = useState<RecordingItemRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [greetingName, setGreetingName] = useState("there");
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [openRecordingId, setOpenRecordingId] = useState<string | null>(null);
@@ -35,20 +35,6 @@ export function AllRecordingsView() {
 
   const load = useCallback(async () => {
     const supabase = createClient();
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) {
-      setProjects([]);
-      setItems([]);
-      setLoading(false);
-      return;
-    }
-
-    const email = sessionData.session.user.email;
-    if (email) {
-      const local = email.split("@")[0];
-      setGreetingName(local.charAt(0).toUpperCase() + local.slice(1));
-    }
-
     setLoading(true);
     const [projRes, itemsRes] = await Promise.all([
       supabase
@@ -71,7 +57,7 @@ export function AllRecordingsView() {
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (!file || !authReady) return;
+    if (!file) return;
 
     setUploadError(null);
     setUploading(true);
@@ -101,30 +87,11 @@ export function AllRecordingsView() {
   };
 
   useEffect(() => {
-    if (!authReady) return;
     const timer = window.setTimeout(() => {
       void load();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [authReady, load]);
-
-  if (authError) {
-    return (
-      <div className="flex flex-1 flex-col px-5 py-10">
-        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          {authError}
-        </p>
-      </div>
-    );
-  }
-
-  if (!authReady) {
-    return (
-      <div className="flex flex-1 items-center justify-center px-5 py-24">
-        <p className="text-sm text-white/60">Signing in…</p>
-      </div>
-    );
-  }
+  }, [load]);
 
   return (
     <div className="flex min-h-dvh flex-1 flex-col bg-[#1A1A1A]">

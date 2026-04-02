@@ -1,7 +1,6 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
-import { useRecordingSession } from "@/lib/use-recording-session";
 import type {
   RecordingItemRow,
   RecordingProjectRow,
@@ -19,30 +18,15 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 export function ProjectView({ projectId }: { projectId: string }) {
-  const { ready: authReady, authError } = useRecordingSession();
   const [project, setProject] = useState<RecordingProjectRow | null>(null);
   const [items, setItems] = useState<RecordingItemRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [greetingName, setGreetingName] = useState("there");
+  const greetingName = "there";
   const [notFound, setNotFound] = useState(false);
   const [openRecordingId, setOpenRecordingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const supabase = createClient();
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) {
-      setProject(null);
-      setItems([]);
-      setLoading(false);
-      return;
-    }
-
-    const email = sessionData.session.user.email;
-    if (email) {
-      const local = email.split("@")[0];
-      setGreetingName(local.charAt(0).toUpperCase() + local.slice(1));
-    }
-
     setLoading(true);
     const { data: proj, error: projErr } = await supabase
       .from("recording_projects")
@@ -74,20 +58,11 @@ export function ProjectView({ projectId }: { projectId: string }) {
   }, [projectId]);
 
   useEffect(() => {
-    if (!authReady) return;
     const timer = window.setTimeout(() => {
       void load();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [authReady, load]);
-
-  if (!authReady) {
-    return (
-      <div className="flex flex-1 items-center justify-center px-5 py-24">
-        <p className="text-sm text-white/60">Signing in…</p>
-      </div>
-    );
-  }
+  }, [load]);
 
   if (notFound && !loading) {
     return (
@@ -118,12 +93,6 @@ export function ProjectView({ projectId }: { projectId: string }) {
 
   return (
     <div className="flex min-h-dvh flex-1 flex-col bg-[#d7d5c8] px-4 pb-28 pt-24 text-[#1e1e1e]">
-      {authError ? (
-        <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          {authError}
-        </p>
-      ) : null}
-
       <section>
         <p
           className="text-[24px] leading-[31px] text-[#1E1E1E]"
@@ -157,7 +126,7 @@ export function ProjectView({ projectId }: { projectId: string }) {
       <section className="mt-8 flex flex-col gap-3">
         <AppSectionLabel>Recent activity</AppSectionLabel>
         <ul className="flex flex-col gap-3">
-          {!authReady || loading ? (
+          {loading ? (
             <li className="text-sm text-neutral-500">Loading…</li>
           ) : items.length === 0 ? (
             <li className="rounded-[10px] bg-[#EAE9E5] px-4 py-4 text-sm text-neutral-600 ring-1 ring-black/[0.06]">
