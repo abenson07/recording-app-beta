@@ -199,7 +199,7 @@ export function ProjectView({ projectId }: { projectId: string }) {
             type="button"
             aria-expanded={descriptionExpanded}
             onClick={() => setDescriptionExpanded((v) => !v)}
-            className="mt-1 inline-block text-left text-[15px] font-medium underline"
+            className="mt-1 inline-block text-left text-[12px] font-medium underline"
           >
             {descriptionExpanded ? "Show less" : "Read more"}
           </button>
