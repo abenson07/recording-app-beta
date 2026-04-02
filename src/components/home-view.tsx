@@ -89,6 +89,7 @@ export function HomeView() {
     (projectId: string) => items.filter((i) => i.project_id === projectId).length,
     [items],
   );
+  const projectCount = projects.length;
 
   const recentActivity = [
     ...items.map((item) => ({
@@ -136,7 +137,9 @@ export function HomeView() {
         >
           <div className="flex items-center gap-2">
             <img src={ICON_EQUALIZER} alt="" className="h-[18px] w-[18px]" />
-            <span>38 projects</span>
+            <span>
+              {projectCount} project{projectCount === 1 ? "" : "s"}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <img src={ICON_TIMER} alt="" className="h-[18px] w-[18px]" />
