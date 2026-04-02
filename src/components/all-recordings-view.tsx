@@ -18,7 +18,7 @@ import {
   AppSectionLabel,
 } from "@/components/app-screen";
 import { FloatingNav } from "@/components/floating-nav";
-import { ListRowCardLink, WaveformGlyph } from "@/components/list-row-card";
+import { ActivityCard } from "@/components/activity-card";
 import { persistRecordingBlob } from "@/lib/persist-recording";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -30,6 +30,7 @@ export function AllRecordingsView() {
   const [greetingName, setGreetingName] = useState("there");
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [openRecordingId, setOpenRecordingId] = useState<string | null>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -101,7 +102,10 @@ export function AllRecordingsView() {
 
   useEffect(() => {
     if (!authReady) return;
-    load();
+    const timer = window.setTimeout(() => {
+      void load();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [authReady, load]);
 
   if (authError) {
@@ -152,14 +156,38 @@ export function AllRecordingsView() {
               const dur = formatDurationClock(totalDurationSec(item));
               const project = projects.find((p) => p.id === item.project_id);
               const subtitle = `${formatRelativeTime(touchIso)} · ${dur} · ${segs} segment${segs === 1 ? "" : "s"}${project ? ` · ${project.name}` : ""}`;
+              const summary = item.recording_files
+                ?.map((f) => f.transcript?.trim())
+                .filter(Boolean)
+                .join(" ")
+                .slice(0, 180);
               return (
                 <li key={item.id}>
-                  <ListRowCardLink
-                    href={`/recording/${item.id}`}
-                    title={item.title ?? "Untitled"}
-                    subtitle={subtitle}
-                    icon={<WaveformGlyph />}
-                  />
+                  {openRecordingId === item.id ? (
+                    <ActivityCard
+                      variant="recording"
+                      state="open"
+                      title={item.title ?? "Untitled"}
+                      subtitle={subtitle}
+                      summary={summary || undefined}
+                      addToRecordingHref={`/record?append=${encodeURIComponent(item.id)}`}
+                      seeOutputHref={`/recording/${item.id}`}
+                      seeOutputLabel="See outputs"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className="w-full text-left"
+                      onClick={() => setOpenRecordingId(item.id)}
+                    >
+                      <ActivityCard
+                        variant="recording"
+                        state="default"
+                        title={item.title ?? "Untitled"}
+                        subtitle={subtitle}
+                      />
+                    </button>
+                  )}
                 </li>
               );
             })

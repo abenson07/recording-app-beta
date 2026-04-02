@@ -12,13 +12,12 @@ import {
   formatRelativeTime,
 } from "@/lib/recording-types";
 import {
-  AppContentSheet,
-  AppScreenHeader,
   AppSectionLabel,
 } from "@/components/app-screen";
 import { FloatingNav } from "@/components/floating-nav";
 import { ListRowCardStatic, WaveformGlyph } from "@/components/list-row-card";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 function sortedFiles(files: RecordingFileRow[] | null | undefined): RecordingFileRow[] {
@@ -26,6 +25,7 @@ function sortedFiles(files: RecordingFileRow[] | null | undefined): RecordingFil
 }
 
 export function RecordingDetailView({ recordingId }: { recordingId: string }) {
+  const router = useRouter();
   const { ready: authReady, authError } = useRecordingSession();
   const [item, setItem] = useState<RecordingItemRow | null>(null);
   const [project, setProject] = useState<RecordingProjectRow | null>(null);
@@ -34,6 +34,11 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
   const [notFound, setNotFound] = useState(false);
   const [projectError, setProjectError] = useState<string | null>(null);
   const [updatingProject, setUpdatingProject] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [draftTitle, setDraftTitle] = useState("");
+  const [titleError, setTitleError] = useState<string | null>(null);
+  const [showMoveOptions, setShowMoveOptions] = useState(false);
+  const [creatingProject, setCreatingProject] = useState(false);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -124,9 +129,101 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
     setUpdatingProject(false);
   };
 
+  const handleRename = async () => {
+    if (!item) return;
+    const next = draftTitle.trim();
+    if (!next) {
+      setTitleError("Name cannot be empty.");
+      return;
+    }
+    if (next === (item.title ?? "").trim()) {
+      setRenaming(false);
+      setTitleError(null);
+      return;
+    }
+
+    setTitleError(null);
+    setRenaming(true);
+    const prev = item.title ?? "";
+    setItem({ ...item, title: next });
+
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("recording_items")
+      .update({ title: next })
+      .eq("id", item.id);
+
+    if (error) {
+      setTitleError(error.message);
+      setItem({ ...item, title: prev });
+      setRenaming(false);
+      return;
+    }
+
+    setRenaming(false);
+  };
+
+  const handleCreateProjectFromRecording = async () => {
+    if (!item) return;
+
+    setProjectError(null);
+    setCreatingProject(true);
+
+    const supabase = createClient();
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser();
+    if (userErr || !user) {
+      setProjectError("Not signed in.");
+      setCreatingProject(false);
+      return;
+    }
+
+    const baseTitle = (item.title ?? "").trim() || "Recording";
+    const nextProjectName = `${baseTitle} project`;
+
+    const { data: createdProject, error: createErr } = await supabase
+      .from("recording_projects")
+      .insert({
+        user_id: user.id,
+        name: nextProjectName,
+      })
+      .select("id, name, summary, created_at")
+      .single();
+
+    if (createErr || !createdProject) {
+      setProjectError(createErr?.message ?? "Failed to create project.");
+      setCreatingProject(false);
+      return;
+    }
+
+    const { error: moveErr } = await supabase
+      .from("recording_items")
+      .update({ project_id: createdProject.id })
+      .eq("id", item.id);
+
+    if (moveErr) {
+      setProjectError(moveErr.message);
+      setCreatingProject(false);
+      return;
+    }
+
+    const newProject = createdProject as RecordingProjectRow;
+    setProjects((prev) => [newProject, ...prev]);
+    setProject(newProject);
+    setItem((prev) => (prev ? { ...prev, project_id: newProject.id } : prev));
+    setShowMoveOptions(false);
+    setCreatingProject(false);
+    router.push(`/project/${newProject.id}`);
+  };
+
   useEffect(() => {
     if (!authReady) return;
-    load();
+    const timer = window.setTimeout(() => {
+      void load();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [authReady, load]);
 
   if (!authReady) {
@@ -157,83 +254,190 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
     item && !loading
       ? `${formatRelativeTime(touchIso)} · ${files.length} segment${files.length === 1 ? "" : "s"}`
       : undefined;
+  const outputPreview = files
+    .map((f) => f.transcript?.trim())
+    .filter(Boolean)
+    .join(" ")
+    .slice(0, 220);
+
+  const activeProjectName = project?.name ?? "Unassigned (inbox)";
 
   return (
-    <div className="flex min-h-dvh flex-1 flex-col bg-[#1A1A1A]">
+    <div className="relative flex min-h-dvh flex-1 flex-col bg-[#d7d5c8] px-4 pb-28 pt-24 text-[#1e1e1e]">
       {authError ? (
-        <p className="mx-5 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+        <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
           {authError}
         </p>
       ) : null}
 
-      <AppScreenHeader
-        greeting={project?.name ?? "Inbox"}
-        title={item?.title ?? "Recording"}
-        meta={metaLine}
-      />
-
-      <AppContentSheet>
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-neutral-500">
-          <Link href="/" className="font-medium text-[#C2410C] hover:underline">
+      <section>
+        <p
+          className="text-[30px] leading-[1.08]"
+          style={{ fontFamily: "var(--font-instrument-serif), serif" }}
+        >
+          {item?.title ?? "Recording outputs"}
+        </p>
+        <div
+          className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-black/65"
+          style={{
+            fontFamily: "var(--font-instrument-sans), sans-serif",
+            fontVariationSettings: "'wdth' 100",
+          }}
+        >
+          <Link href="/" className="font-medium text-black/75 hover:underline">
             Home
           </Link>
           {project ? (
             <>
-              <span className="text-neutral-300">·</span>
-              <Link
-                href={`/project/${project.id}`}
-                className="font-medium text-[#C2410C] hover:underline"
-              >
+              <span>·</span>
+              <Link href={`/project/${project.id}`} className="font-medium text-black/75 hover:underline">
                 {project.name}
               </Link>
             </>
+          ) : (
+            <>
+              <span>·</span>
+              <span>Inbox</span>
+            </>
+          )}
+          {metaLine ? (
+            <>
+              <span>·</span>
+              <span>{metaLine}</span>
+            </>
           ) : null}
         </div>
+      </section>
+
+      <section className="mt-7 flex flex-col gap-4">
+
+        <section className="flex flex-col gap-2">
+          <AppSectionLabel>Output summary</AppSectionLabel>
+          <p className="text-sm leading-relaxed text-black/70">
+            {loading
+              ? "Loading outputs..."
+              : outputPreview.length > 0
+                ? `${outputPreview}${outputPreview.length >= 220 ? "…" : ""}`
+                : "No transcript output yet. Add another recording segment to generate outputs."}
+          </p>
+        </section>
 
         {!loading && item ? (
           <section className="flex flex-col gap-2">
-            <AppSectionLabel>Project</AppSectionLabel>
-            <div className="rounded-2xl bg-white/80 px-4 py-3 ring-1 ring-black/[0.06]">
-              <label htmlFor="recording-project" className="sr-only">
-                Project
-              </label>
-              <select
-                id="recording-project"
-                value={item.project_id ?? ""}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  void handleProjectChange(v === "" ? null : v);
-                }}
-                disabled={updatingProject}
-                className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-800 outline-none focus-visible:ring-2 focus-visible:ring-[#D35400]/35 disabled:opacity-50"
+            <div className="flex items-center gap-3 text-sm">
+              <button
+                type="button"
+                onClick={() => setShowMoveOptions((v) => !v)}
+                className="text-black/75 underline underline-offset-2"
               >
-                <option value="">Unassigned (inbox)</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-              {projects.length === 0 ? (
-                <p className="mt-2 text-xs text-neutral-500">
-                  No projects yet. Create one from the home screen.
-                </p>
-              ) : null}
-              {projectError ? (
-                <p className="mt-2 text-sm text-red-600">{projectError}</p>
-              ) : null}
+                Move recording
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDraftTitle(item.title ?? "");
+                  setTitleError(null);
+                  setRenaming((v) => !v);
+                }}
+                className="text-black/75 underline underline-offset-2"
+              >
+                Rename recording
+              </button>
             </div>
+
+            {showMoveOptions ? (
+              <div className="flex flex-col gap-2">
+                <p className="text-sm text-black/65">
+                  Current project: {activeProjectName}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void handleCreateProjectFromRecording()}
+                  disabled={creatingProject || updatingProject}
+                  className="w-fit text-sm text-black/75 underline underline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {creatingProject ? "Creating project..." : "Move to new project"}
+                </button>
+                <label htmlFor="recording-project" className="sr-only">
+                  Move recording to project
+                </label>
+                <select
+                  id="recording-project"
+                  value={item.project_id ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    void handleProjectChange(v === "" ? null : v);
+                  }}
+                  disabled={updatingProject}
+                  className="w-full rounded-[10px] border border-[#D9D7CA] bg-white px-3 py-2.5 text-sm text-neutral-800 outline-none focus-visible:ring-2 focus-visible:ring-black/20 disabled:opacity-50"
+                >
+                  <option value="">Unassigned (inbox)</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+
+            {renaming ? (
+              <div className="flex flex-col gap-2">
+                <label htmlFor="recording-title" className="sr-only">
+                  Recording name
+                </label>
+                <input
+                  id="recording-title"
+                  type="text"
+                  value={draftTitle}
+                  onChange={(e) => setDraftTitle(e.target.value)}
+                  placeholder="Recording name"
+                  className="w-full rounded-[10px] border border-[#D9D7CA] bg-white px-3 py-2.5 text-sm text-neutral-800 outline-none focus-visible:ring-2 focus-visible:ring-black/20"
+                />
+                <div className="flex items-center gap-3 text-sm">
+                  <button
+                    type="button"
+                    onClick={() => void handleRename()}
+                    className="text-black/75 underline underline-offset-2"
+                  >
+                    Save name
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRenaming(false);
+                      setTitleError(null);
+                    }}
+                    className="text-black/50 underline underline-offset-2"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {projects.length === 0 && showMoveOptions ? (
+              <p className="text-xs text-neutral-500">
+                No projects yet. Create one from the home screen.
+              </p>
+            ) : null}
+            {projectError ? (
+              <p className="text-sm text-red-600">{projectError}</p>
+            ) : null}
+            {titleError ? (
+              <p className="text-sm text-red-600">{titleError}</p>
+            ) : null}
           </section>
         ) : null}
 
         <section className="flex flex-col gap-3">
-          <AppSectionLabel>Segments</AppSectionLabel>
+          <AppSectionLabel>Outputs</AppSectionLabel>
           <ul className="flex flex-col gap-3">
             {!authReady || loading ? (
-              <li className="text-sm text-neutral-500">Loading…</li>
+              <li className="text-sm text-black/55">Loading…</li>
             ) : files.length === 0 ? (
-              <li className="rounded-2xl bg-white/80 px-4 py-4 text-sm text-neutral-600 ring-1 ring-black/[0.06]">
-                No segments yet. Add a recording to create segments.
+              <li className="rounded-[10px] bg-[#EAE9E5] px-4 py-4 text-sm text-black/60">
+                No outputs yet. Add a recording to create segments.
               </li>
             ) : (
               files.map((f, idx) => {
@@ -241,21 +445,25 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
                 return (
                   <li key={f.id}>
                     <ListRowCardStatic
-                      title={`Segment ${idx + 1}`}
+                      title={`Output ${idx + 1}`}
                       subtitle={`${formatRelativeTime(segDate)} · ${formatDurationClock(f.duration ?? 0)}`}
                       icon={<WaveformGlyph />}
+                      className="bg-white shadow-none ring-0"
                     />
+                    {f.transcript?.trim() ? (
+                      <p className="mt-2 rounded-[10px] border border-[#D9D7CA] bg-[#FBFBF9] px-3 py-2.5 text-sm leading-relaxed text-black/70">
+                        {f.transcript.trim()}
+                      </p>
+                    ) : null}
                   </li>
                 );
               })
             )}
           </ul>
         </section>
-      </AppContentSheet>
+      </section>
 
-      <FloatingNav
-        centerHref={`/record?append=${encodeURIComponent(recordingId)}`}
-      />
+      <FloatingNav centerHref={`/record?append=${encodeURIComponent(recordingId)}`} />
     </div>
   );
 }
