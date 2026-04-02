@@ -16,7 +16,7 @@ import {
 } from "@/components/app-screen";
 import { TranscriptMarkdownSummary } from "@/components/transcript-markdown-summary";
 import { FloatingNav } from "@/components/floating-nav";
-import { ListRowCardStatic, WaveformGlyph } from "@/components/list-row-card";
+import { ActivityCard } from "@/components/activity-card";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -503,24 +503,24 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
         ) : null}
 
         <section className="flex flex-col gap-3">
-          <AppSectionLabel>Outputs</AppSectionLabel>
+          <AppSectionLabel>Recording files</AppSectionLabel>
           <ul className="flex flex-col gap-3">
             {loading ? (
               <li className="text-sm text-black/55">Loading…</li>
             ) : files.length === 0 ? (
               <li className="rounded-[10px] bg-[#EAE9E5] px-4 py-4 text-sm text-black/60">
-                No outputs yet. Add a recording to create segments.
+                No recording files yet. Append audio or video to add more files.
               </li>
             ) : (
-              files.map((f, idx) => {
+              files.map((f) => {
                 const segDate = f.created_at ?? item!.created_at;
                 return (
                   <li key={f.id}>
-                    <ListRowCardStatic
-                      title={`Output ${idx + 1}`}
+                    <ActivityCard
+                      variant="recording"
+                      state="default"
+                      title={`Recording file ${f.sequence_index + 1}`}
                       subtitle={`${formatRelativeTime(segDate)} · ${formatDurationClock(f.duration ?? 0)}`}
-                      icon={<WaveformGlyph />}
-                      className="bg-white shadow-none ring-0"
                     />
                   </li>
                 );
