@@ -12,11 +12,7 @@ import {
   segmentCount,
   totalDurationSec,
 } from "@/lib/recording-types";
-import {
-  AppContentSheet,
-  AppScreenHeader,
-  AppSectionLabel,
-} from "@/components/app-screen";
+import { AppSectionLabel } from "@/components/app-screen";
 import { FloatingNav } from "@/components/floating-nav";
 import { ActivityCard } from "@/components/activity-card";
 import Link from "next/link";
@@ -109,83 +105,110 @@ export function ProjectView({ projectId }: { projectId: string }) {
 
   const metaLine =
     project && !loading
-      ? `${formatRelativeTime(project.created_at)} · ${items.length} recording${items.length === 1 ? "" : "s"}`
+      ? `${items.length} recording${items.length === 1 ? "" : "s"}  ${formatRelativeTime(project.created_at)}`
       : undefined;
 
+  const descriptionText =
+    project?.summary?.trim() ||
+    items
+      .flatMap((i) => i.recording_files ?? [])
+      .map((f) => f.transcript?.trim() ?? "")
+      .find(Boolean) ||
+    "Add a project description to capture the context for this recording set.";
+
   return (
-    <div className="flex min-h-dvh flex-1 flex-col bg-[#1A1A1A]">
+    <div className="flex min-h-dvh flex-1 flex-col bg-[#d7d5c8] px-4 pb-28 pt-24 text-[#1e1e1e]">
       {authError ? (
-        <p className="mx-5 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+        <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
           {authError}
         </p>
       ) : null}
 
-      <AppScreenHeader
-        greeting={`Hello ${greetingName},`}
-        title={project?.name ?? "…"}
-        meta={metaLine}
-      />
-
-      <AppContentSheet>
-        <p className="text-xs text-neutral-500">
-          <Link href="/" className="font-medium text-[#C2410C] hover:underline">
-            Home
-          </Link>
+      <section>
+        <p
+          className="text-[24px] leading-[31px] text-[#1E1E1E]"
+          style={{ fontFamily: "var(--font-instrument-serif), serif" }}
+        >
+          {project?.name ?? "Project name"}
         </p>
+        <div
+          className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-black/75"
+          style={{
+            fontFamily: "var(--font-instrument-sans), sans-serif",
+            fontVariationSettings: "'wdth' 100",
+          }}
+        >
+          <span>{metaLine}</span>
+          <span>·</span>
+          <span>Hello {greetingName}</span>
+        </div>
+      </section>
 
-        <section className="flex flex-col gap-3">
-          <AppSectionLabel>All recordings</AppSectionLabel>
-          <ul className="flex flex-col gap-3">
-            {!authReady || loading ? (
-              <li className="text-sm text-neutral-500">Loading…</li>
-            ) : items.length === 0 ? (
-              <li className="rounded-2xl bg-white/80 px-4 py-4 text-sm text-neutral-600 ring-1 ring-black/[0.06]">
-                No recordings in this project yet.
-              </li>
-            ) : (
-              items.map((item) => {
-                const touchIso = item.updated_at ?? item.created_at;
-                const segs = segmentCount(item);
-                const dur = formatDurationClock(totalDurationSec(item));
-                const summary = item.recording_files
-                  ?.map((f) => f.transcript?.trim())
-                  .filter(Boolean)
-                  .join(" ")
-                  .slice(0, 180);
-                return (
-                  <li key={item.id}>
-                    {openRecordingId === item.id ? (
+      <section className="mt-6">
+        <p className="text-[15px] leading-relaxed text-black/75">
+          <span className="font-medium">Description: </span>
+          {descriptionText}
+        </p>
+        <Link href="/projects" className="mt-1 inline-block text-[15px] font-medium underline">
+          Read more
+        </Link>
+      </section>
+
+      <section className="mt-8 flex flex-col gap-3">
+        <AppSectionLabel>Recent activity</AppSectionLabel>
+        <ul className="flex flex-col gap-3">
+          {!authReady || loading ? (
+            <li className="text-sm text-neutral-500">Loading…</li>
+          ) : items.length === 0 ? (
+            <li className="rounded-[10px] bg-[#EAE9E5] px-4 py-4 text-sm text-neutral-600 ring-1 ring-black/[0.06]">
+              No recordings in this project yet.
+            </li>
+          ) : (
+            items.map((item) => {
+              const touchIso = item.updated_at ?? item.created_at;
+              const segs = segmentCount(item);
+              const dur = formatDurationClock(totalDurationSec(item));
+              const summary = item.recording_files
+                ?.map((f) => f.transcript?.trim())
+                .filter(Boolean)
+                .join(" ")
+                .slice(0, 180);
+              return (
+                <li key={item.id}>
+                  {openRecordingId === item.id ? (
+                    <ActivityCard
+                      variant="recording"
+                      state="open"
+                      title={item.title ?? "Untitled"}
+                      subtitle={`${formatRelativeTime(touchIso)} - ${dur}`}
+                      summary={summary || undefined}
+                      addToRecordingHref={`/record?append=${encodeURIComponent(item.id)}`}
+                      seeOutputHref={`/recording/${item.id}`}
+                      seeOutputLabel="See outputs"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className="w-full text-left"
+                      onClick={() => setOpenRecordingId(item.id)}
+                    >
                       <ActivityCard
                         variant="recording"
-                        state="open"
+                        state="default"
                         title={item.title ?? "Untitled"}
-                        subtitle={`${formatRelativeTime(touchIso)} · ${dur} · ${segs} segment${segs === 1 ? "" : "s"}`}
-                        summary={summary || undefined}
-                        addToRecordingHref={`/record?append=${encodeURIComponent(item.id)}`}
-                        seeOutputHref={`/recording/${item.id}`}
-                        seeOutputLabel="See outputs"
+                        subtitle={`${formatRelativeTime(touchIso)} - ${dur}`}
                       />
-                    ) : (
-                      <button
-                        type="button"
-                        className="w-full text-left"
-                        onClick={() => setOpenRecordingId(item.id)}
-                      >
-                        <ActivityCard
-                          variant="recording"
-                          state="default"
-                          title={item.title ?? "Untitled"}
-                          subtitle={`${formatRelativeTime(touchIso)} · ${dur} · ${segs} segment${segs === 1 ? "" : "s"}`}
-                        />
-                      </button>
-                    )}
-                  </li>
-                );
-              })
-            )}
-          </ul>
-        </section>
-      </AppContentSheet>
+                    </button>
+                  )}
+                  <p className="sr-only">
+                    {segs} segment{segs === 1 ? "" : "s"}
+                  </p>
+                </li>
+              );
+            })
+          )}
+        </ul>
+      </section>
 
       <FloatingNav
         centerHref={`/record?project=${encodeURIComponent(projectId)}`}

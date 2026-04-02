@@ -17,6 +17,7 @@ import {
 import { FloatingNav } from "@/components/floating-nav";
 import { ListRowCardStatic, WaveformGlyph } from "@/components/list-row-card";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 function sortedFiles(files: RecordingFileRow[] | null | undefined): RecordingFileRow[] {
@@ -24,6 +25,7 @@ function sortedFiles(files: RecordingFileRow[] | null | undefined): RecordingFil
 }
 
 export function RecordingDetailView({ recordingId }: { recordingId: string }) {
+  const router = useRouter();
   const { ready: authReady, authError } = useRecordingSession();
   const [item, setItem] = useState<RecordingItemRow | null>(null);
   const [project, setProject] = useState<RecordingProjectRow | null>(null);
@@ -36,6 +38,7 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
   const [draftTitle, setDraftTitle] = useState("");
   const [titleError, setTitleError] = useState<string | null>(null);
   const [showMoveOptions, setShowMoveOptions] = useState(false);
+  const [creatingProject, setCreatingProject] = useState(false);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -158,6 +161,61 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
     }
 
     setRenaming(false);
+  };
+
+  const handleCreateProjectFromRecording = async () => {
+    if (!item) return;
+
+    setProjectError(null);
+    setCreatingProject(true);
+
+    const supabase = createClient();
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser();
+    if (userErr || !user) {
+      setProjectError("Not signed in.");
+      setCreatingProject(false);
+      return;
+    }
+
+    const baseTitle = (item.title ?? "").trim() || "Recording";
+    const nextProjectName = `${baseTitle} project`;
+
+    const { data: createdProject, error: createErr } = await supabase
+      .from("recording_projects")
+      .insert({
+        user_id: user.id,
+        name: nextProjectName,
+      })
+      .select("id, name, summary, created_at")
+      .single();
+
+    if (createErr || !createdProject) {
+      setProjectError(createErr?.message ?? "Failed to create project.");
+      setCreatingProject(false);
+      return;
+    }
+
+    const { error: moveErr } = await supabase
+      .from("recording_items")
+      .update({ project_id: createdProject.id })
+      .eq("id", item.id);
+
+    if (moveErr) {
+      setProjectError(moveErr.message);
+      setCreatingProject(false);
+      return;
+    }
+
+    const newProject = createdProject as RecordingProjectRow;
+    setProjects((prev) => [newProject, ...prev]);
+    setProject(newProject);
+    setItem((prev) => (prev ? { ...prev, project_id: newProject.id } : prev));
+    setShowMoveOptions(false);
+    setCreatingProject(false);
+    router.push(`/project/${newProject.id}`);
   };
 
   useEffect(() => {
@@ -292,6 +350,14 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
                 <p className="text-sm text-black/65">
                   Current project: {activeProjectName}
                 </p>
+                <button
+                  type="button"
+                  onClick={() => void handleCreateProjectFromRecording()}
+                  disabled={creatingProject || updatingProject}
+                  className="w-fit text-sm text-black/75 underline underline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {creatingProject ? "Creating project..." : "Move to new project"}
+                </button>
                 <label htmlFor="recording-project" className="sr-only">
                   Move recording to project
                 </label>
