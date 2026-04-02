@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import { persistRecordingBlob } from "@/lib/persist-recording";
 import type {
   RecordingItemRow,
   RecordingProjectRow,
@@ -15,7 +16,13 @@ import { AppSectionLabel } from "@/components/app-screen";
 import { FloatingNav } from "@/components/floating-nav";
 import { ActivityCard } from "@/components/activity-card";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 export function ProjectView({ projectId }: { projectId: string }) {
   const [project, setProject] = useState<RecordingProjectRow | null>(null);
@@ -24,6 +31,12 @@ export function ProjectView({ projectId }: { projectId: string }) {
   const greetingName = "there";
   const [notFound, setNotFound] = useState(false);
   const [openRecordingId, setOpenRecordingId] = useState<string | null>(null);
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
+  const [descriptionOverflows, setDescriptionOverflows] = useState(false);
+  const descriptionRef = useRef<HTMLParagraphElement>(null);
+  const projectUploadRef = useRef<HTMLInputElement>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -57,12 +70,73 @@ export function ProjectView({ projectId }: { projectId: string }) {
     setLoading(false);
   }, [projectId]);
 
+  const handleProjectUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!project) {
+      setUploadError("Project is still loading. Try again in a moment.");
+      return;
+    }
+
+    setUploadError(null);
+    setUploading(true);
+    const supabase = createClient();
+    const result = await persistRecordingBlob(
+      supabase,
+      file,
+      {
+        contentType: file.type || "application/octet-stream",
+        durationSec: null,
+        captureType: "file_upload",
+        newItemTitle: `Upload · ${file.name}`,
+      },
+      {
+        appendToItemId: null,
+        items,
+        newItemProjectId: projectId,
+        projects: [project],
+      },
+    );
+    setUploading(false);
+    if (!result.ok) {
+      setUploadError(result.error);
+      return;
+    }
+    await load();
+  };
+
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void load();
     }, 0);
     return () => window.clearTimeout(timer);
   }, [load]);
+
+  const descriptionText =
+    project?.summary?.trim() ||
+    items
+      .flatMap((i) => i.recording_files ?? [])
+      .map((f) => f.transcript?.trim() ?? "")
+      .find(Boolean) ||
+    "Add a project description to capture the context for this recording set.";
+
+  useLayoutEffect(() => {
+    if (descriptionExpanded) {
+      return;
+    }
+    const el = descriptionRef.current;
+    if (!el) {
+      return;
+    }
+    const measure = () => {
+      setDescriptionOverflows(el.scrollHeight > el.clientHeight + 1);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [descriptionText, descriptionExpanded, loading]);
 
   if (notFound && !loading) {
     return (
@@ -77,19 +151,6 @@ export function ProjectView({ projectId }: { projectId: string }) {
       </div>
     );
   }
-
-  const metaLine =
-    project && !loading
-      ? `${items.length} recording${items.length === 1 ? "" : "s"}  ${formatRelativeTime(project.created_at)}`
-      : undefined;
-
-  const descriptionText =
-    project?.summary?.trim() ||
-    items
-      .flatMap((i) => i.recording_files ?? [])
-      .map((f) => f.transcript?.trim() ?? "")
-      .find(Boolean) ||
-    "Add a project description to capture the context for this recording set.";
 
   return (
     <div className="flex min-h-dvh flex-1 flex-col bg-[#d7d5c8] px-4 pb-28 pt-24 text-[#1e1e1e]">
@@ -107,24 +168,52 @@ export function ProjectView({ projectId }: { projectId: string }) {
             fontVariationSettings: "'wdth' 100",
           }}
         >
-          <span>{metaLine}</span>
+          {project && !loading ? (
+            <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1">
+              <span className="shrink-0">
+                {items.length} recording{items.length === 1 ? "" : "s"}
+              </span>
+              <span className="min-w-0">
+                {formatRelativeTime(project.created_at)}
+              </span>
+            </span>
+          ) : null}
           <span>·</span>
           <span>Hello {greetingName}</span>
         </div>
       </section>
 
       <section className="mt-6">
-        <p className="text-[15px] leading-relaxed text-black/75">
+        <p
+          ref={descriptionRef}
+          className={
+            descriptionExpanded
+              ? "text-[15px] leading-relaxed text-black/75"
+              : "line-clamp-4 overflow-hidden text-[15px] leading-relaxed text-black/75"
+          }
+        >
           <span className="font-medium">Description: </span>
           {descriptionText}
         </p>
-        <Link href="/projects" className="mt-1 inline-block text-[15px] font-medium underline">
-          Read more
-        </Link>
+        {descriptionExpanded || descriptionOverflows ? (
+          <button
+            type="button"
+            aria-expanded={descriptionExpanded}
+            onClick={() => setDescriptionExpanded((v) => !v)}
+            className="mt-1 inline-block text-left text-[15px] font-medium underline"
+          >
+            {descriptionExpanded ? "Show less" : "Read more"}
+          </button>
+        ) : null}
       </section>
 
       <section className="mt-8 flex flex-col gap-3">
         <AppSectionLabel>Recent activity</AppSectionLabel>
+        {uploadError ? (
+          <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+            {uploadError}
+          </p>
+        ) : null}
         <ul className="flex flex-col gap-3">
           {loading ? (
             <li className="text-sm text-neutral-500">Loading…</li>
@@ -180,8 +269,17 @@ export function ProjectView({ projectId }: { projectId: string }) {
         </ul>
       </section>
 
+      <input
+        ref={projectUploadRef}
+        type="file"
+        className="sr-only"
+        accept="audio/*,video/*,.mp3,.wav,.m4a,.aac,.flac,.ogg"
+        onChange={handleProjectUpload}
+      />
       <FloatingNav
-        centerHref={`/record?project=${encodeURIComponent(projectId)}`}
+        onUploadClick={() => {
+          if (!uploading && project) projectUploadRef.current?.click();
+        }}
       />
     </div>
   );

@@ -96,7 +96,7 @@ function CardHeader({
         )}
       </div>
       <div className="min-w-0">
-        <p className="truncate font-serif text-[18px] leading-[1.05]">{title}</p>
+        <p className="truncate font-serif text-[14px] leading-[1.05]">{title}</p>
         <p className="truncate text-[14px] text-black/65">{subtitle}</p>
       </div>
     </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import { persistRecordingBlob } from "@/lib/persist-recording";
 import type {
   RecordingFileRow,
   RecordingItemRow,
@@ -13,11 +14,12 @@ import {
 import {
   AppSectionLabel,
 } from "@/components/app-screen";
+import { TranscriptMarkdownSummary } from "@/components/transcript-markdown-summary";
 import { FloatingNav } from "@/components/floating-nav";
 import { ListRowCardStatic, WaveformGlyph } from "@/components/list-row-card";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 function sortedFiles(files: RecordingFileRow[] | null | undefined): RecordingFileRow[] {
   return [...(files ?? [])].sort((a, b) => a.sequence_index - b.sequence_index);
@@ -37,6 +39,12 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
   const [titleError, setTitleError] = useState<string | null>(null);
   const [showMoveOptions, setShowMoveOptions] = useState(false);
   const [creatingProject, setCreatingProject] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const detailUploadRef = useRef<HTMLInputElement>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -87,6 +95,42 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
 
     setLoading(false);
   }, [recordingId]);
+
+  const handleAppendUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!item) {
+      setUploadError("Recording is still loading. Try again in a moment.");
+      return;
+    }
+
+    setUploadError(null);
+    setUploading(true);
+    const supabase = createClient();
+    const result = await persistRecordingBlob(
+      supabase,
+      file,
+      {
+        contentType: file.type || "application/octet-stream",
+        durationSec: null,
+        captureType: "file_upload",
+        newItemTitle: `Upload · ${file.name}`,
+      },
+      {
+        appendToItemId: recordingId,
+        items: [item],
+        newItemProjectId: "",
+        projects: [],
+      },
+    );
+    setUploading(false);
+    if (!result.ok) {
+      setUploadError(result.error);
+      return;
+    }
+    await load();
+  };
 
   const handleProjectChange = async (nextProjectId: string | null) => {
     if (!item) return;
@@ -150,6 +194,24 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
     }
 
     setRenaming(false);
+  };
+
+  const handleDeleteRecording = async () => {
+    if (!item) return;
+    setDeleteError(null);
+    setDeleting(true);
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("recording_items")
+      .delete()
+      .eq("id", item.id);
+    setDeleting(false);
+    if (error) {
+      setDeleteError(error.message);
+      return;
+    }
+    const dest = item.project_id ? `/project/${item.project_id}` : "/";
+    router.push(dest);
   };
 
   const handleCreateProjectFromRecording = async () => {
@@ -223,11 +285,10 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
     item && !loading
       ? `${formatRelativeTime(touchIso)} · ${files.length} segment${files.length === 1 ? "" : "s"}`
       : undefined;
-  const outputPreview = files
+  const outputTranscriptMarkdown = files
     .map((f) => f.transcript?.trim())
     .filter(Boolean)
-    .join(" ")
-    .slice(0, 220);
+    .join("\n\n");
 
   const activeProjectName = project?.name ?? "Unassigned (inbox)";
 
@@ -241,7 +302,7 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
           {item?.title ?? "Recording outputs"}
         </p>
         <div
-          className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-black/65"
+          className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] text-black/65"
           style={{
             fontFamily: "var(--font-instrument-sans), sans-serif",
             fontVariationSettings: "'wdth' 100",
@@ -275,22 +336,23 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
       <section className="mt-7 flex flex-col gap-4">
 
         <section className="flex flex-col gap-2">
-          <AppSectionLabel>Output summary</AppSectionLabel>
-          <p className="text-sm leading-relaxed text-black/70">
-            {loading
-              ? "Loading outputs..."
-              : outputPreview.length > 0
-                ? `${outputPreview}${outputPreview.length >= 220 ? "…" : ""}`
-                : "No transcript output yet. Add another recording segment to generate outputs."}
-          </p>
+          <AppSectionLabel>Transcript</AppSectionLabel>
+          <TranscriptMarkdownSummary
+            markdown={outputTranscriptMarkdown}
+            loading={loading}
+            emptyMessage="No transcript output yet. Add another recording segment to generate outputs."
+          />
         </section>
 
         {!loading && item ? (
           <section className="flex flex-col gap-2">
-            <div className="flex items-center gap-3 text-sm">
+            <div className="flex flex-wrap items-center gap-3 text-sm">
               <button
                 type="button"
-                onClick={() => setShowMoveOptions((v) => !v)}
+                onClick={() => {
+                  setDeleteConfirmOpen(false);
+                  setShowMoveOptions((v) => !v);
+                }}
                 className="text-black/75 underline underline-offset-2"
               >
                 Move recording
@@ -298,6 +360,7 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
               <button
                 type="button"
                 onClick={() => {
+                  setDeleteConfirmOpen(false);
                   setDraftTitle(item.title ?? "");
                   setTitleError(null);
                   setRenaming((v) => !v);
@@ -306,7 +369,50 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
               >
                 Rename recording
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMoveOptions(false);
+                  setDeleteConfirmOpen((v) => !v);
+                }}
+                className="text-red-700/90 underline underline-offset-2"
+              >
+                Delete recording
+              </button>
             </div>
+
+            {deleteConfirmOpen ? (
+              <div
+                className="flex flex-col gap-3 rounded-[10px] border border-red-200 bg-red-50/90 px-3 py-3"
+                role="dialog"
+                aria-labelledby="delete-recording-title"
+              >
+                <p id="delete-recording-title" className="text-sm text-neutral-800">
+                  Delete this recording and all its segments? This cannot be undone.
+                </p>
+                <div className="flex flex-wrap items-center gap-3 text-sm">
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteRecording()}
+                    disabled={deleting}
+                    className="font-medium text-red-800 underline underline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {deleting ? "Deleting…" : "Delete permanently"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeleteConfirmOpen(false);
+                      setDeleteError(null);
+                    }}
+                    disabled={deleting}
+                    className="text-black/65 underline underline-offset-2 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : null}
 
             {showMoveOptions ? (
               <div className="flex flex-col gap-2">
@@ -387,6 +493,9 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
             {projectError ? (
               <p className="text-sm text-red-600">{projectError}</p>
             ) : null}
+            {deleteError ? (
+              <p className="text-sm text-red-600">{deleteError}</p>
+            ) : null}
             {titleError ? (
               <p className="text-sm text-red-600">{titleError}</p>
             ) : null}
@@ -413,11 +522,6 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
                       icon={<WaveformGlyph />}
                       className="bg-white shadow-none ring-0"
                     />
-                    {f.transcript?.trim() ? (
-                      <p className="mt-2 rounded-[10px] border border-[#D9D7CA] bg-[#FBFBF9] px-3 py-2.5 text-sm leading-relaxed text-black/70">
-                        {f.transcript.trim()}
-                      </p>
-                    ) : null}
                   </li>
                 );
               })
@@ -426,7 +530,24 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
         </section>
       </section>
 
-      <FloatingNav centerHref={`/record?append=${encodeURIComponent(recordingId)}`} />
+      {uploadError ? (
+        <p className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          {uploadError}
+        </p>
+      ) : null}
+
+      <input
+        ref={detailUploadRef}
+        type="file"
+        className="sr-only"
+        accept="audio/*,video/*,.mp3,.wav,.m4a,.aac,.flac,.ogg"
+        onChange={handleAppendUpload}
+      />
+      <FloatingNav
+        onUploadClick={() => {
+          if (!uploading && item) detailUploadRef.current?.click();
+        }}
+      />
     </div>
   );
 }
