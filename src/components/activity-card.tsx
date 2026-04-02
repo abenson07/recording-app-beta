@@ -30,16 +30,16 @@ export type ActivityCardProps = RecordingCardProps | ProjectCardProps;
 export function ActivityCard(props: ActivityCardProps) {
   const state = props.state ?? "default";
   const isOpenRecording = props.variant === "recording" && state === "open";
+  const navigateWholeCard = Boolean(props.href) && !isOpenRecording;
 
-  return (
-    <article
-      className={`rounded-[10px] bg-[#EAE9E5] px-3 py-4 ${isOpenRecording ? "space-y-3.5" : ""} ${props.className ?? ""}`}
-      onClick={props.onClick}
-    >
+  const className = `rounded-[10px] bg-[#EAE9E5] px-3 py-4 ${isOpenRecording ? "space-y-3.5" : ""} ${props.className ?? ""}`;
+
+  const inner = (
+    <>
       <CardHeader
         title={props.title}
         subtitle={props.subtitle}
-        href={props.href}
+        href={navigateWholeCard ? undefined : props.href}
         variant={props.variant}
       />
 
@@ -71,6 +71,20 @@ export function ActivityCard(props: ActivityCardProps) {
           </div>
         </>
       ) : null}
+    </>
+  );
+
+  if (navigateWholeCard) {
+    return (
+      <Link href={props.href!} className={`block ${className}`}>
+        {inner}
+      </Link>
+    );
+  }
+
+  return (
+    <article className={className} onClick={props.onClick}>
+      {inner}
     </article>
   );
 }

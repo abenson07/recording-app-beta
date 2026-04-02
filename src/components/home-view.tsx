@@ -22,7 +22,6 @@ export function HomeView() {
   const [loading, setLoading] = useState(true);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [openRecordingId, setOpenRecordingId] = useState<string | null>(null);
   const homeUploadRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -115,8 +114,6 @@ export function HomeView() {
     .sort((a, b) => b.at - a.at)
     .slice(0, 8);
 
-  const itemById = new Map(items.map((item) => [item.id, item]));
-
   return (
     <div className="relative flex min-h-dvh flex-1 flex-col bg-[#d7d5c8] px-4 pb-28 pt-24 text-[#1e1e1e]">
       <section>
@@ -176,39 +173,13 @@ export function HomeView() {
             {recentActivity.map((entry) => (
               <li key={`${entry.type}-${entry.id}`}>
                 {entry.type === "recording" ? (
-                  openRecordingId === entry.id ? (
-                    <ActivityCard
-                      variant="recording"
-                      state="open"
-                      onClick={() => setOpenRecordingId(null)}
-                      title={entry.title}
-                      subtitle={entry.subtitle}
-                      summary={
-                        itemById
-                          .get(entry.id)
-                          ?.recording_files?.map((f) => f.transcript?.trim())
-                          .filter(Boolean)
-                          .join(" ")
-                          .slice(0, 180) || undefined
-                      }
-                      addToRecordingHref={`/record?append=${encodeURIComponent(entry.id)}`}
-                      seeOutputHref={`/recording/${entry.id}`}
-                      seeOutputLabel="See outputs"
-                    />
-                  ) : (
-                    <button
-                      type="button"
-                      className="w-full text-left"
-                      onClick={() => setOpenRecordingId(entry.id)}
-                    >
-                      <ActivityCard
-                        variant="recording"
-                        state="default"
-                        title={entry.title}
-                        subtitle={entry.subtitle}
-                      />
-                    </button>
-                  )
+                  <ActivityCard
+                    variant="recording"
+                    state="default"
+                    href={entry.href}
+                    title={entry.title}
+                    subtitle={entry.subtitle}
+                  />
                 ) : (
                   <ActivityCard
                     variant="project"

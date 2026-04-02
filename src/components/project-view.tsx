@@ -30,7 +30,6 @@ export function ProjectView({ projectId }: { projectId: string }) {
   const [loading, setLoading] = useState(true);
   const greetingName = "there";
   const [notFound, setNotFound] = useState(false);
-  const [openRecordingId, setOpenRecordingId] = useState<string | null>(null);
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [descriptionOverflows, setDescriptionOverflows] = useState(false);
   const descriptionRef = useRef<HTMLParagraphElement>(null);
@@ -226,39 +225,15 @@ export function ProjectView({ projectId }: { projectId: string }) {
               const touchIso = item.updated_at ?? item.created_at;
               const segs = segmentCount(item);
               const dur = formatDurationClock(totalDurationSec(item));
-              const summary = item.recording_files
-                ?.map((f) => f.transcript?.trim())
-                .filter(Boolean)
-                .join(" ")
-                .slice(0, 180);
               return (
                 <li key={item.id}>
-                  {openRecordingId === item.id ? (
-                    <ActivityCard
-                      variant="recording"
-                      state="open"
-                      onClick={() => setOpenRecordingId(null)}
-                      title={item.title ?? "Untitled"}
-                      subtitle={`${formatRelativeTime(touchIso)} - ${dur}`}
-                      summary={summary || undefined}
-                      addToRecordingHref={`/record?append=${encodeURIComponent(item.id)}`}
-                      seeOutputHref={`/recording/${item.id}`}
-                      seeOutputLabel="See outputs"
-                    />
-                  ) : (
-                    <button
-                      type="button"
-                      className="w-full text-left"
-                      onClick={() => setOpenRecordingId(item.id)}
-                    >
-                      <ActivityCard
-                        variant="recording"
-                        state="default"
-                        title={item.title ?? "Untitled"}
-                        subtitle={`${formatRelativeTime(touchIso)} - ${dur}`}
-                      />
-                    </button>
-                  )}
+                  <ActivityCard
+                    variant="recording"
+                    state="default"
+                    href={`/recording/${item.id}`}
+                    title={item.title ?? "Untitled"}
+                    subtitle={`${formatRelativeTime(touchIso)} - ${dur}`}
+                  />
                   <p className="sr-only">
                     {segs} segment{segs === 1 ? "" : "s"}
                   </p>

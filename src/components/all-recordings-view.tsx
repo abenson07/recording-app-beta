@@ -30,7 +30,6 @@ export function AllRecordingsView() {
   const [loading, setLoading] = useState(true);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [openRecordingId, setOpenRecordingId] = useState<string | null>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -123,39 +122,15 @@ export function AllRecordingsView() {
               const dur = formatDurationClock(totalDurationSec(item));
               const project = projects.find((p) => p.id === item.project_id);
               const subtitle = `${formatRelativeTime(touchIso)} · ${dur} · ${segs} segment${segs === 1 ? "" : "s"}${project ? ` · ${project.name}` : ""}`;
-              const summary = item.recording_files
-                ?.map((f) => f.transcript?.trim())
-                .filter(Boolean)
-                .join(" ")
-                .slice(0, 180);
               return (
                 <li key={item.id}>
-                  {openRecordingId === item.id ? (
-                    <ActivityCard
-                      variant="recording"
-                      state="open"
-                      onClick={() => setOpenRecordingId(null)}
-                      title={item.title ?? "Untitled"}
-                      subtitle={subtitle}
-                      summary={summary || undefined}
-                      addToRecordingHref={`/record?append=${encodeURIComponent(item.id)}`}
-                      seeOutputHref={`/recording/${item.id}`}
-                      seeOutputLabel="See outputs"
-                    />
-                  ) : (
-                    <button
-                      type="button"
-                      className="w-full text-left"
-                      onClick={() => setOpenRecordingId(item.id)}
-                    >
-                      <ActivityCard
-                        variant="recording"
-                        state="default"
-                        title={item.title ?? "Untitled"}
-                        subtitle={subtitle}
-                      />
-                    </button>
-                  )}
+                  <ActivityCard
+                    variant="recording"
+                    state="default"
+                    href={`/recording/${item.id}`}
+                    title={item.title ?? "Untitled"}
+                    subtitle={subtitle}
+                  />
                 </li>
               );
             })
