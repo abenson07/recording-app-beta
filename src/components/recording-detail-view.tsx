@@ -32,6 +32,10 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
   const [notFound, setNotFound] = useState(false);
   const [projectError, setProjectError] = useState<string | null>(null);
   const [updatingProject, setUpdatingProject] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [draftTitle, setDraftTitle] = useState("");
+  const [titleError, setTitleError] = useState<string | null>(null);
+  const [showMoveOptions, setShowMoveOptions] = useState(false);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -122,6 +126,40 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
     setUpdatingProject(false);
   };
 
+  const handleRename = async () => {
+    if (!item) return;
+    const next = draftTitle.trim();
+    if (!next) {
+      setTitleError("Name cannot be empty.");
+      return;
+    }
+    if (next === (item.title ?? "").trim()) {
+      setRenaming(false);
+      setTitleError(null);
+      return;
+    }
+
+    setTitleError(null);
+    setRenaming(true);
+    const prev = item.title ?? "";
+    setItem({ ...item, title: next });
+
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("recording_items")
+      .update({ title: next })
+      .eq("id", item.id);
+
+    if (error) {
+      setTitleError(error.message);
+      setItem({ ...item, title: prev });
+      setRenaming(false);
+      return;
+    }
+
+    setRenaming(false);
+  };
+
   useEffect(() => {
     if (!authReady) return;
     const timer = window.setTimeout(() => {
@@ -163,6 +201,8 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
     .filter(Boolean)
     .join(" ")
     .slice(0, 220);
+
+  const activeProjectName = project?.name ?? "Unassigned (inbox)";
 
   return (
     <div className="relative flex min-h-dvh flex-1 flex-col bg-[#d7d5c8] px-4 pb-28 pt-24 text-[#1e1e1e]">
@@ -215,50 +255,112 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
 
         <section className="flex flex-col gap-2">
           <AppSectionLabel>Output summary</AppSectionLabel>
-          <div className="rounded-[10px] border border-[#D9D7CA] bg-[#FBFBF9] px-3 py-2">
-            <p className="text-sm leading-relaxed text-black/70">
-              {loading
-                ? "Loading outputs..."
-                : outputPreview.length > 0
-                  ? `${outputPreview}${outputPreview.length >= 220 ? "…" : ""}`
-                  : "No transcript output yet. Add another recording segment to generate outputs."}
-            </p>
-          </div>
+          <p className="text-sm leading-relaxed text-black/70">
+            {loading
+              ? "Loading outputs..."
+              : outputPreview.length > 0
+                ? `${outputPreview}${outputPreview.length >= 220 ? "…" : ""}`
+                : "No transcript output yet. Add another recording segment to generate outputs."}
+          </p>
         </section>
 
         {!loading && item ? (
           <section className="flex flex-col gap-2">
-            <AppSectionLabel>Project</AppSectionLabel>
-            <div className="rounded-[10px] bg-[#EAE9E5] px-3 py-3">
-              <label htmlFor="recording-project" className="sr-only">
-                Project
-              </label>
-              <select
-                id="recording-project"
-                value={item.project_id ?? ""}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  void handleProjectChange(v === "" ? null : v);
-                }}
-                disabled={updatingProject}
-                className="w-full rounded-[10px] border border-[#D9D7CA] bg-white px-3 py-2.5 text-sm text-neutral-800 outline-none focus-visible:ring-2 focus-visible:ring-black/20 disabled:opacity-50"
+            <div className="flex items-center gap-3 text-sm">
+              <button
+                type="button"
+                onClick={() => setShowMoveOptions((v) => !v)}
+                className="text-black/75 underline underline-offset-2"
               >
-                <option value="">Unassigned (inbox)</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-              {projects.length === 0 ? (
-                <p className="mt-2 text-xs text-neutral-500">
-                  No projects yet. Create one from the home screen.
-                </p>
-              ) : null}
-              {projectError ? (
-                <p className="mt-2 text-sm text-red-600">{projectError}</p>
-              ) : null}
+                Move recording
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDraftTitle(item.title ?? "");
+                  setTitleError(null);
+                  setRenaming((v) => !v);
+                }}
+                className="text-black/75 underline underline-offset-2"
+              >
+                Rename recording
+              </button>
             </div>
+
+            {showMoveOptions ? (
+              <div className="flex flex-col gap-2">
+                <p className="text-sm text-black/65">
+                  Current project: {activeProjectName}
+                </p>
+                <label htmlFor="recording-project" className="sr-only">
+                  Move recording to project
+                </label>
+                <select
+                  id="recording-project"
+                  value={item.project_id ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    void handleProjectChange(v === "" ? null : v);
+                  }}
+                  disabled={updatingProject}
+                  className="w-full rounded-[10px] border border-[#D9D7CA] bg-white px-3 py-2.5 text-sm text-neutral-800 outline-none focus-visible:ring-2 focus-visible:ring-black/20 disabled:opacity-50"
+                >
+                  <option value="">Unassigned (inbox)</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+
+            {renaming ? (
+              <div className="flex flex-col gap-2">
+                <label htmlFor="recording-title" className="sr-only">
+                  Recording name
+                </label>
+                <input
+                  id="recording-title"
+                  type="text"
+                  value={draftTitle}
+                  onChange={(e) => setDraftTitle(e.target.value)}
+                  placeholder="Recording name"
+                  className="w-full rounded-[10px] border border-[#D9D7CA] bg-white px-3 py-2.5 text-sm text-neutral-800 outline-none focus-visible:ring-2 focus-visible:ring-black/20"
+                />
+                <div className="flex items-center gap-3 text-sm">
+                  <button
+                    type="button"
+                    onClick={() => void handleRename()}
+                    className="text-black/75 underline underline-offset-2"
+                  >
+                    Save name
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRenaming(false);
+                      setTitleError(null);
+                    }}
+                    className="text-black/50 underline underline-offset-2"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {projects.length === 0 && showMoveOptions ? (
+              <p className="text-xs text-neutral-500">
+                No projects yet. Create one from the home screen.
+              </p>
+            ) : null}
+            {projectError ? (
+              <p className="text-sm text-red-600">{projectError}</p>
+            ) : null}
+            {titleError ? (
+              <p className="text-sm text-red-600">{titleError}</p>
+            ) : null}
           </section>
         ) : null}
 
@@ -275,7 +377,7 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
               files.map((f, idx) => {
                 const segDate = f.created_at ?? item!.created_at;
                 return (
-                  <li key={f.id} className="rounded-[10px] bg-[#EAE9E5] px-3 py-3">
+                  <li key={f.id}>
                     <ListRowCardStatic
                       title={`Output ${idx + 1}`}
                       subtitle={`${formatRelativeTime(segDate)} · ${formatDurationClock(f.duration ?? 0)}`}
