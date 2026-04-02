@@ -2,26 +2,18 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { useRecordingSession } from "@/lib/use-recording-session";
-import type { RecordingProjectRow } from "@/lib/recording-types";
+import type { RecordingItemRow, RecordingProjectRow } from "@/lib/recording-types";
 import { formatRelativeTime } from "@/lib/recording-types";
-import {
-  AppContentSheet,
-  AppScreenHeader,
-  AppSectionLabel,
-} from "@/components/app-screen";
+import { ActivityCard } from "@/components/activity-card";
 import { FloatingNav } from "@/components/floating-nav";
-import { FolderGlyph, ListRowCardLink } from "@/components/list-row-card";
 import { persistRecordingBlob } from "@/lib/persist-recording";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export function AllProjectsView() {
   const { ready: authReady, authError } = useRecordingSession();
   const [projects, setProjects] = useState<RecordingProjectRow[]>([]);
-  const [itemProjectIds, setItemProjectIds] = useState<
-    { project_id: string | null }[]
-  >([]);
+  const [items, setItems] = useState<RecordingItemRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [greetingName, setGreetingName] = useState("there");
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const uploadRef = useRef<HTMLInputElement>(null);
@@ -31,15 +23,9 @@ export function AllProjectsView() {
     const { data: sessionData } = await supabase.auth.getSession();
     if (!sessionData.session) {
       setProjects([]);
-      setItemProjectIds([]);
+      setItems([]);
       setLoading(false);
       return;
-    }
-
-    const email = sessionData.session.user.email;
-    if (email) {
-      const local = email.split("@")[0];
-      setGreetingName(local.charAt(0).toUpperCase() + local.slice(1));
     }
 
     setLoading(true);
@@ -47,12 +33,17 @@ export function AllProjectsView() {
       supabase
         .from("recording_projects")
         .select("id, name, summary, created_at")
-        .order("name", { ascending: true }),
-      supabase.from("recording_items").select("project_id").limit(2000),
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("recording_items")
+        .select(
+          "id, title, created_at, updated_at, project_id, recording_files (id, sequence_index, transcript, storage_path, duration, created_at)",
+        )
+        .order("created_at", { ascending: false }),
     ]);
 
     setProjects((projRes.data as RecordingProjectRow[]) ?? []);
-    setItemProjectIds((itemsRes.data as { project_id: string | null }[]) ?? []);
+    setItems((itemsRes.data as RecordingItemRow[]) ?? []);
     setLoading(false);
   }, []);
 
@@ -75,7 +66,7 @@ export function AllProjectsView() {
       },
       {
         appendToItemId: null,
-        items: [],
+        items,
         newItemProjectId: "",
         projects,
       },
@@ -90,11 +81,41 @@ export function AllProjectsView() {
 
   useEffect(() => {
     if (!authReady) return;
-    load();
+    const timer = window.setTimeout(() => {
+      void load();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [authReady, load]);
 
-  const countFor = (projectId: string) =>
-    itemProjectIds.filter((i) => i.project_id === projectId).length;
+  const projectRecordingCounts = items.reduce(
+    (acc, item) => {
+      if (!item.project_id) return acc;
+      acc[item.project_id] = (acc[item.project_id] ?? 0) + 1;
+      return acc;
+    },
+    {} as Record<string, number>,
+  );
+
+  const rootActivity = [
+    ...projects.map((project) => ({
+      id: project.id,
+      type: "project" as const,
+      href: `/project/${project.id}`,
+      title: project.name || "Project",
+      subtitle: `${formatRelativeTime(project.created_at)} - ${projectRecordingCounts[project.id] ?? 0} recording${(projectRecordingCounts[project.id] ?? 0) === 1 ? "" : "s"}`,
+      at: Date.parse(project.created_at),
+    })),
+    ...items
+      .filter((item) => !item.project_id)
+      .map((item) => ({
+        id: item.id,
+        type: "recording" as const,
+        href: `/recording/${item.id}`,
+        title: item.title ?? "Recording",
+        subtitle: `${formatRelativeTime(item.updated_at ?? item.created_at)} - Unassigned`,
+        at: Date.parse(item.updated_at ?? item.created_at),
+      })),
+  ].sort((a, b) => b.at - a.at);
 
   if (authError) {
     return (
@@ -109,51 +130,61 @@ export function AllProjectsView() {
   if (!authReady) {
     return (
       <div className="flex flex-1 items-center justify-center px-5 py-24">
-        <p className="text-sm text-white/60">Signing in…</p>
+        <p className="text-sm text-black/60">Signing in...</p>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-dvh flex-1 flex-col bg-[#1A1A1A]">
-      <AppScreenHeader
-        greeting={`Hello ${greetingName},`}
-        title="All Projects"
-      />
+    <div className="relative flex min-h-dvh flex-1 flex-col bg-[#d7d5c8] px-4 pb-28 pt-24 text-[#1e1e1e]">
+      <section>
+        <p
+          className="text-[24px] leading-[1.2]"
+          style={{ fontFamily: "var(--font-instrument-serif), serif" }}
+        >
+          All your top-level projects and unassigned recordings, in newest-first order.
+        </p>
+      </section>
 
-      <AppContentSheet>
-        <AppSectionLabel>All projects</AppSectionLabel>
+      <section className="mt-[44px]">
+        <h2
+          className="mb-3 text-[14px] text-black/70"
+          style={{
+            fontFamily: "var(--font-instrument-sans), sans-serif",
+            fontVariationSettings: "'wdth' 100",
+          }}
+        >
+          All projects
+        </h2>
 
         {uploadError ? (
-          <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          <p className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
             {uploadError}
           </p>
         ) : null}
 
-        <ul className="flex flex-col gap-3">
-          {loading ? (
-            <li className="text-sm text-neutral-500">Loading…</li>
-          ) : projects.length === 0 ? (
-            <li className="rounded-2xl bg-white/80 px-4 py-4 text-sm text-neutral-600 ring-1 ring-black/[0.06]">
-              No projects yet. Upload a recording from home or use Record to create one.
-            </li>
-          ) : (
-            projects.map((p) => {
-              const n = countFor(p.id);
-              return (
-                <li key={p.id}>
-                  <ListRowCardLink
-                    href={`/project/${p.id}`}
-                    title={p.name}
-                    subtitle={`${formatRelativeTime(p.created_at)} · ${n} recording${n === 1 ? "" : "s"}`}
-                    icon={<FolderGlyph />}
-                  />
-                </li>
-              );
-            })
-          )}
-        </ul>
-      </AppContentSheet>
+        {loading ? (
+          <p className="text-sm text-black/55">Loading…</p>
+        ) : rootActivity.length === 0 ? (
+          <p className="rounded-[10px] bg-[#eae9e5] px-4 py-4 text-sm text-black/60">
+            No projects or unassigned recordings yet.
+          </p>
+        ) : (
+          <ul className="space-y-3">
+            {rootActivity.map((entry) => (
+              <li key={`${entry.type}-${entry.id}`}>
+                <ActivityCard
+                  variant={entry.type}
+                  state="default"
+                  href={entry.href}
+                  title={entry.title}
+                  subtitle={entry.subtitle}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <input
         ref={uploadRef}

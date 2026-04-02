@@ -16,7 +16,7 @@ type Props = {
 function navActiveIndex(pathname: string): number {
   if (pathname === "/") return 0;
   if (pathname === "/record") return 1;
-  if (pathname === "/recordings") return 2;
+  if (pathname === "/projects") return 2;
   return -1;
 }
 
@@ -42,7 +42,7 @@ export function FloatingNav({ centerHref, onUploadClick }: Props) {
             }`}
             aria-current={activeIndex === 0 ? "page" : undefined}
           >
-            <AirplayGlyph className="h-[18px] w-[18px]" />
+            <AirplayGlyph className="h-4 w-4" />
             <span className="sr-only">Home</span>
           </Link>
 
@@ -55,7 +55,7 @@ export function FloatingNav({ centerHref, onUploadClick }: Props) {
               aria-current={activeIndex === 1 ? "page" : undefined}
               aria-label="Add recording"
             >
-              <UploadGlyph className="h-[18px] w-[18px]" />
+              <UploadGlyph className="h-4 w-4" />
             </Link>
           ) : (
             <button
@@ -66,19 +66,19 @@ export function FloatingNav({ centerHref, onUploadClick }: Props) {
               }`}
               aria-label="Upload recording"
             >
-              <UploadGlyph className="h-[18px] w-[18px]" />
+              <UploadGlyph className="h-4 w-4" />
             </button>
           )}
 
           <Link
-            href="/recordings"
+            href="/projects"
             className={`flex size-10 items-center justify-center rounded-[48px] transition-colors duration-200 ${
               activeIndex === 2 ? "bg-white/20 text-[#f7f7f7]" : "text-[#f7f7f7] hover:bg-white/10"
             }`}
             aria-current={activeIndex === 2 ? "page" : undefined}
           >
-            <WaveformGlyph className="h-[18px] w-[18px]" />
-            <span className="sr-only">All recordings</span>
+            <WaveformGlyph className="h-4 w-4" />
+            <span className="sr-only">All projects</span>
           </Link>
         </div>
       </nav>

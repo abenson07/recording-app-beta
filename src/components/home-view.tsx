@@ -9,14 +9,11 @@ import type {
 } from "@/lib/recording-types";
 import { formatRelativeTime } from "@/lib/recording-types";
 import { ActivityCard } from "@/components/activity-card";
-import Link from "next/link";
+import { FloatingNav } from "@/components/floating-nav";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const ICON_EQUALIZER = "https://www.figma.com/api/mcp/asset/d87ebf13-3af2-4601-90bd-7d87610d0018";
 const ICON_TIMER = "https://www.figma.com/api/mcp/asset/814a95be-8f70-46ec-8c64-1ff9a7ec562a";
-const ICON_AIRPLAY = "https://www.figma.com/api/mcp/asset/ccc9bca5-16f5-4d5f-81ef-ce9910ec72a3";
-const ICON_UPLOAD = "https://www.figma.com/api/mcp/asset/c96ac8c5-5a91-491d-8556-96c9339536dc";
-const ICON_ACTIVITY = "https://www.figma.com/api/mcp/asset/c0076f22-1950-4542-9653-f9178f775e57";
 
 export function HomeView() {
   const { ready: authReady, authError } = useRecordingSession();
@@ -25,6 +22,7 @@ export function HomeView() {
   const [loading, setLoading] = useState(true);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [openRecordingId, setOpenRecordingId] = useState<string | null>(null);
   const homeUploadRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -122,6 +120,8 @@ export function HomeView() {
     .sort((a, b) => b.at - a.at)
     .slice(0, 8);
 
+  const itemById = new Map(items.map((item) => [item.id, item]));
+
   if (authError) {
     return (
       <div className="flex flex-1 flex-col px-5 py-10">
@@ -196,13 +196,48 @@ export function HomeView() {
           <ul className="space-y-3">
             {recentActivity.map((entry) => (
               <li key={`${entry.type}-${entry.id}`}>
-                <ActivityCard
-                  variant={entry.type}
-                  state="default"
-                  href={entry.href}
-                  title={entry.title}
-                  subtitle={entry.subtitle}
-                />
+                {entry.type === "recording" ? (
+                  openRecordingId === entry.id ? (
+                    <ActivityCard
+                      variant="recording"
+                      state="open"
+                      title={entry.title}
+                      subtitle={entry.subtitle}
+                      summary={
+                        itemById
+                          .get(entry.id)
+                          ?.recording_files?.map((f) => f.transcript?.trim())
+                          .filter(Boolean)
+                          .join(" ")
+                          .slice(0, 180) || undefined
+                      }
+                      addToRecordingHref={`/record?append=${encodeURIComponent(entry.id)}`}
+                      seeOutputHref={`/recording/${entry.id}`}
+                      seeOutputLabel="See outputs"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className="w-full text-left"
+                      onClick={() => setOpenRecordingId(entry.id)}
+                    >
+                      <ActivityCard
+                        variant="recording"
+                        state="default"
+                        title={entry.title}
+                        subtitle={entry.subtitle}
+                      />
+                    </button>
+                  )
+                ) : (
+                  <ActivityCard
+                    variant="project"
+                    state="default"
+                    href={entry.href}
+                    title={entry.title}
+                    subtitle={entry.subtitle}
+                  />
+                )}
               </li>
             ))}
           </ul>
@@ -216,36 +251,11 @@ export function HomeView() {
         accept="audio/*,video/*,.mp3,.wav,.m4a,.aac,.flac,.ogg"
         onChange={handleHomeUpload}
       />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[70px] bg-gradient-to-b from-[rgba(215,213,200,0)] to-[#d7d5c8]" />
-
-      <nav className="fixed bottom-5 left-1/2 z-20 -translate-x-1/2 rounded-[64px] bg-black px-[10px] py-[4.8px] shadow-[0px_4px_4px_0px_rgba(0,0,0,0.25)]">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/record"
-            className="flex h-10 w-10 items-center justify-center rounded-[48px] bg-[rgba(247,247,247,0.2)] p-1"
-            aria-label="Record"
-          >
-            <img src={ICON_AIRPLAY} alt="" className="h-[18px] w-[18px]" />
-          </Link>
-          <button
-            type="button"
-            onClick={() => {
-              if (!uploading) homeUploadRef.current?.click();
-            }}
-            className="flex h-10 w-10 items-center justify-center rounded-[48px] p-1"
-            aria-label="Upload"
-          >
-            <img src={ICON_UPLOAD} alt="" className="h-[18px] w-[18px]" />
-          </button>
-          <Link
-            href="/recordings"
-            className="flex h-10 w-10 items-center justify-center rounded-[48px] p-1"
-            aria-label="Recordings"
-          >
-            <img src={ICON_ACTIVITY} alt="" className="h-[18px] w-[18px]" />
-          </Link>
-        </div>
-      </nav>
+      <FloatingNav
+        onUploadClick={() => {
+          if (!uploading) homeUploadRef.current?.click();
+        }}
+      />
     </div>
   );
 }

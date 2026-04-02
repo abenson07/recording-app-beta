@@ -6,7 +6,7 @@ type Props = { params: Promise<{ id: string }> };
 export default async function RecordingPage({ params }: Props) {
   const { id } = await params;
   return (
-    <MobileShell frameClassName="bg-[#141414]" innerClassName="bg-[#1A1A1A]">
+    <MobileShell frameClassName="bg-[#d7d5c8]" innerClassName="bg-[#d7d5c8]">
       <RecordingDetailView recordingId={id} />
     </MobileShell>
   );

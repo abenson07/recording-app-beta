@@ -12,8 +12,6 @@ import {
   formatRelativeTime,
 } from "@/lib/recording-types";
 import {
-  AppContentSheet,
-  AppScreenHeader,
   AppSectionLabel,
 } from "@/components/app-screen";
 import { FloatingNav } from "@/components/floating-nav";
@@ -126,7 +124,10 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
 
   useEffect(() => {
     if (!authReady) return;
-    load();
+    const timer = window.setTimeout(() => {
+      void load();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [authReady, load]);
 
   if (!authReady) {
@@ -157,43 +158,78 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
     item && !loading
       ? `${formatRelativeTime(touchIso)} · ${files.length} segment${files.length === 1 ? "" : "s"}`
       : undefined;
+  const outputPreview = files
+    .map((f) => f.transcript?.trim())
+    .filter(Boolean)
+    .join(" ")
+    .slice(0, 220);
 
   return (
-    <div className="flex min-h-dvh flex-1 flex-col bg-[#1A1A1A]">
+    <div className="relative flex min-h-dvh flex-1 flex-col bg-[#d7d5c8] px-4 pb-28 pt-24 text-[#1e1e1e]">
       {authError ? (
-        <p className="mx-5 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+        <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
           {authError}
         </p>
       ) : null}
 
-      <AppScreenHeader
-        greeting={project?.name ?? "Inbox"}
-        title={item?.title ?? "Recording"}
-        meta={metaLine}
-      />
-
-      <AppContentSheet>
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-neutral-500">
-          <Link href="/" className="font-medium text-[#C2410C] hover:underline">
+      <section>
+        <p
+          className="text-[30px] leading-[1.08]"
+          style={{ fontFamily: "var(--font-instrument-serif), serif" }}
+        >
+          {item?.title ?? "Recording outputs"}
+        </p>
+        <div
+          className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-black/65"
+          style={{
+            fontFamily: "var(--font-instrument-sans), sans-serif",
+            fontVariationSettings: "'wdth' 100",
+          }}
+        >
+          <Link href="/" className="font-medium text-black/75 hover:underline">
             Home
           </Link>
           {project ? (
             <>
-              <span className="text-neutral-300">·</span>
-              <Link
-                href={`/project/${project.id}`}
-                className="font-medium text-[#C2410C] hover:underline"
-              >
+              <span>·</span>
+              <Link href={`/project/${project.id}`} className="font-medium text-black/75 hover:underline">
                 {project.name}
               </Link>
             </>
+          ) : (
+            <>
+              <span>·</span>
+              <span>Inbox</span>
+            </>
+          )}
+          {metaLine ? (
+            <>
+              <span>·</span>
+              <span>{metaLine}</span>
+            </>
           ) : null}
         </div>
+      </section>
+
+      <section className="mt-7 flex flex-col gap-4">
+
+        <section className="flex flex-col gap-2">
+          <AppSectionLabel>Output summary</AppSectionLabel>
+          <div className="rounded-[10px] border border-[#D9D7CA] bg-[#FBFBF9] px-3 py-2">
+            <p className="text-sm leading-relaxed text-black/70">
+              {loading
+                ? "Loading outputs..."
+                : outputPreview.length > 0
+                  ? `${outputPreview}${outputPreview.length >= 220 ? "…" : ""}`
+                  : "No transcript output yet. Add another recording segment to generate outputs."}
+            </p>
+          </div>
+        </section>
 
         {!loading && item ? (
           <section className="flex flex-col gap-2">
             <AppSectionLabel>Project</AppSectionLabel>
-            <div className="rounded-2xl bg-white/80 px-4 py-3 ring-1 ring-black/[0.06]">
+            <div className="rounded-[10px] bg-[#EAE9E5] px-3 py-3">
               <label htmlFor="recording-project" className="sr-only">
                 Project
               </label>
@@ -205,7 +241,7 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
                   void handleProjectChange(v === "" ? null : v);
                 }}
                 disabled={updatingProject}
-                className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-800 outline-none focus-visible:ring-2 focus-visible:ring-[#D35400]/35 disabled:opacity-50"
+                className="w-full rounded-[10px] border border-[#D9D7CA] bg-white px-3 py-2.5 text-sm text-neutral-800 outline-none focus-visible:ring-2 focus-visible:ring-black/20 disabled:opacity-50"
               >
                 <option value="">Unassigned (inbox)</option>
                 {projects.map((p) => (
@@ -227,35 +263,39 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
         ) : null}
 
         <section className="flex flex-col gap-3">
-          <AppSectionLabel>Segments</AppSectionLabel>
+          <AppSectionLabel>Outputs</AppSectionLabel>
           <ul className="flex flex-col gap-3">
             {!authReady || loading ? (
-              <li className="text-sm text-neutral-500">Loading…</li>
+              <li className="text-sm text-black/55">Loading…</li>
             ) : files.length === 0 ? (
-              <li className="rounded-2xl bg-white/80 px-4 py-4 text-sm text-neutral-600 ring-1 ring-black/[0.06]">
-                No segments yet. Add a recording to create segments.
+              <li className="rounded-[10px] bg-[#EAE9E5] px-4 py-4 text-sm text-black/60">
+                No outputs yet. Add a recording to create segments.
               </li>
             ) : (
               files.map((f, idx) => {
                 const segDate = f.created_at ?? item!.created_at;
                 return (
-                  <li key={f.id}>
+                  <li key={f.id} className="rounded-[10px] bg-[#EAE9E5] px-3 py-3">
                     <ListRowCardStatic
-                      title={`Segment ${idx + 1}`}
+                      title={`Output ${idx + 1}`}
                       subtitle={`${formatRelativeTime(segDate)} · ${formatDurationClock(f.duration ?? 0)}`}
                       icon={<WaveformGlyph />}
+                      className="bg-white shadow-none ring-0"
                     />
+                    {f.transcript?.trim() ? (
+                      <p className="mt-2 rounded-[10px] border border-[#D9D7CA] bg-[#FBFBF9] px-3 py-2.5 text-sm leading-relaxed text-black/70">
+                        {f.transcript.trim()}
+                      </p>
+                    ) : null}
                   </li>
                 );
               })
             )}
           </ul>
         </section>
-      </AppContentSheet>
+      </section>
 
-      <FloatingNav
-        centerHref={`/record?append=${encodeURIComponent(recordingId)}`}
-      />
+      <FloatingNav centerHref={`/record?append=${encodeURIComponent(recordingId)}`} />
     </div>
   );
 }
