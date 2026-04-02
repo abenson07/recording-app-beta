@@ -88,7 +88,10 @@ export function HomeView() {
 
   useEffect(() => {
     if (!authReady) return;
-    load();
+    const timer = window.setTimeout(() => {
+      void load();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [authReady, load]);
 
   const itemsByProjectCount = useCallback(
