@@ -7,31 +7,22 @@ import type {
   RecordingItemRow,
   RecordingProjectRow,
 } from "@/lib/recording-types";
-import {
-  formatDurationClock,
-  formatRelativeTime,
-  segmentCount,
-  totalDurationSec,
-} from "@/lib/recording-types";
-import {
-  AppContentSheet,
-  AppScreenHeader,
-  AppSectionLabel,
-} from "@/components/app-screen";
-import { FloatingNav } from "@/components/floating-nav";
-import {
-  FolderGlyph,
-  ListRowCardLink,
-  WaveformGlyph,
-} from "@/components/list-row-card";
+import { formatRelativeTime } from "@/lib/recording-types";
+import { ActivityCard } from "@/components/activity-card";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+
+const ICON_EQUALIZER = "https://www.figma.com/api/mcp/asset/d87ebf13-3af2-4601-90bd-7d87610d0018";
+const ICON_TIMER = "https://www.figma.com/api/mcp/asset/814a95be-8f70-46ec-8c64-1ff9a7ec562a";
+const ICON_AIRPLAY = "https://www.figma.com/api/mcp/asset/ccc9bca5-16f5-4d5f-81ef-ce9910ec72a3";
+const ICON_UPLOAD = "https://www.figma.com/api/mcp/asset/c96ac8c5-5a91-491d-8556-96c9339536dc";
+const ICON_ACTIVITY = "https://www.figma.com/api/mcp/asset/c0076f22-1950-4542-9653-f9178f775e57";
 
 export function HomeView() {
   const { ready: authReady, authError } = useRecordingSession();
   const [projects, setProjects] = useState<RecordingProjectRow[]>([]);
   const [items, setItems] = useState<RecordingItemRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [greetingName, setGreetingName] = useState("there");
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const homeUploadRef = useRef<HTMLInputElement>(null);
@@ -46,18 +37,12 @@ export function HomeView() {
       return;
     }
 
-    const email = sessionData.session.user.email;
-    if (email) {
-      const local = email.split("@")[0];
-      setGreetingName(local.charAt(0).toUpperCase() + local.slice(1));
-    }
-
     setLoading(true);
     const [projRes, itemsRes] = await Promise.all([
       supabase
         .from("recording_projects")
         .select("id, name, summary, created_at")
-        .order("name", { ascending: true }),
+        .order("created_at", { ascending: false }),
       supabase
         .from("recording_items")
         .select(
@@ -108,11 +93,34 @@ export function HomeView() {
     load();
   }, [authReady, load]);
 
-  const itemsByProjectCount = (projectId: string) =>
-    items.filter((i) => i.project_id === projectId).length;
+  const itemsByProjectCount = useCallback(
+    (projectId: string) => items.filter((i) => i.project_id === projectId).length,
+    [items],
+  );
 
-  const recentRecordings = items.slice(0, 8);
-  const recentProjects = projects.slice(0, 6);
+  const recentActivity = [
+    ...items.map((item) => ({
+      id: item.id,
+      type: "recording" as const,
+      href: `/recording/${item.id}`,
+      title: item.title ?? "Recording",
+      subtitle: `${formatRelativeTime(item.created_at)} - 2:49`,
+      at: Date.parse(item.created_at),
+    })),
+    ...projects.map((project) => {
+      const count = itemsByProjectCount(project.id);
+      return {
+        id: project.id,
+        type: "project" as const,
+        href: `/project/${project.id}`,
+        title: project.name || "Project Name",
+        subtitle: `${formatRelativeTime(project.created_at)} - ${count} recording${count === 1 ? "" : "s"}`,
+        at: Date.parse(project.created_at),
+      };
+    }),
+  ]
+    .sort((a, b) => b.at - a.at)
+    .slice(0, 8);
 
   if (authError) {
     return (
@@ -127,81 +135,79 @@ export function HomeView() {
   if (!authReady) {
     return (
       <div className="flex flex-1 items-center justify-center px-5 py-24">
-        <p className="text-sm text-white/60">Signing in…</p>
+        <p className="text-sm text-black/60">Signing in...</p>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-dvh flex-1 flex-col bg-[#1A1A1A]">
-      <AppScreenHeader
-        greeting={`Hello ${greetingName},`}
-        title="What are we discussing today?"
-      />
+    <div className="relative flex min-h-dvh flex-1 flex-col bg-[#d7d5c8] px-4 pb-28 pt-24 text-[#1e1e1e]">
+      <section>
+        <p
+          className="text-[24px] leading-[1.2]"
+          style={{ fontFamily: "var(--font-instrument-serif), serif" }}
+        >
+          Good afternoon, Benson. Last time we talked about your roadtrip back to
+          Seattle, the best way to structure agentic coding, and a new idea for
+          your book.
+        </p>
+        <div
+          className="mt-4 flex items-center gap-4 text-[14px] text-black/70"
+          style={{
+            fontFamily: "var(--font-instrument-sans), sans-serif",
+            fontVariationSettings: "'wdth' 100",
+          }}
+        >
+          <div className="flex items-center gap-2">
+            <img src={ICON_EQUALIZER} alt="" className="h-[18px] w-[18px]" />
+            <span>38 projects</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <img src={ICON_TIMER} alt="" className="h-[18px] w-[18px]" />
+            <span>3 hours this month</span>
+          </div>
+        </div>
+      </section>
 
-      <AppContentSheet>
+      <section className="mt-[44px]">
+        <h2
+          className="mb-3 text-[14px] text-black/70"
+          style={{
+            fontFamily: "var(--font-instrument-sans), sans-serif",
+            fontVariationSettings: "'wdth' 100",
+          }}
+        >
+          Recent activity
+        </h2>
+
         {uploadError ? (
-          <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          <p className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
             {uploadError}
           </p>
         ) : null}
 
-        <section className="flex flex-col gap-3">
-          <AppSectionLabel>Recent musings</AppSectionLabel>
-          <ul className="flex flex-col gap-3">
-            {!authReady || loading ? (
-              <li className="text-sm text-neutral-500">Loading…</li>
-            ) : recentRecordings.length === 0 ? (
-              <li className="rounded-2xl bg-white/80 px-4 py-4 text-sm text-neutral-600 ring-1 ring-black/[0.06]">
-                No recordings yet. Use the upload button below to add one.
+        {!authReady || loading ? (
+          <p className="text-sm text-black/55">Loading…</p>
+        ) : recentActivity.length === 0 ? (
+          <p className="rounded-[10px] bg-[#eae9e5] px-4 py-4 text-sm text-black/60">
+            No recordings or projects yet.
+          </p>
+        ) : (
+          <ul className="space-y-3">
+            {recentActivity.map((entry) => (
+              <li key={`${entry.type}-${entry.id}`}>
+                <ActivityCard
+                  variant={entry.type}
+                  state="default"
+                  href={entry.href}
+                  title={entry.title}
+                  subtitle={entry.subtitle}
+                />
               </li>
-            ) : (
-              recentRecordings.map((item) => {
-                const touchIso = item.updated_at ?? item.created_at;
-                const segs = segmentCount(item);
-                const dur = formatDurationClock(totalDurationSec(item));
-                return (
-                  <li key={item.id}>
-                    <ListRowCardLink
-                      href={`/recording/${item.id}`}
-                      title={item.title ?? "Untitled"}
-                      subtitle={`${formatRelativeTime(touchIso)} · ${dur} · ${segs} segment${segs === 1 ? "" : "s"}`}
-                      icon={<WaveformGlyph />}
-                    />
-                  </li>
-                );
-              })
-            )}
+            ))}
           </ul>
-        </section>
-
-        <section className="flex flex-col gap-3">
-          <AppSectionLabel>Active projects</AppSectionLabel>
-          <ul className="flex flex-col gap-3">
-            {!authReady || loading ? (
-              <li className="text-sm text-neutral-500">Loading…</li>
-            ) : recentProjects.length === 0 ? (
-              <li className="rounded-2xl bg-white/80 px-4 py-4 text-sm text-neutral-600 ring-1 ring-black/[0.06]">
-                No projects yet. Create one from the Record screen, or they appear when you organize recordings.
-              </li>
-            ) : (
-              recentProjects.map((p) => {
-                const n = itemsByProjectCount(p.id);
-                return (
-                  <li key={p.id}>
-                    <ListRowCardLink
-                      href={`/project/${p.id}`}
-                      title={p.name}
-                      subtitle={`${formatRelativeTime(p.created_at)} · ${n} recording${n === 1 ? "" : "s"}`}
-                      icon={<FolderGlyph />}
-                    />
-                  </li>
-                );
-              })
-            )}
-          </ul>
-        </section>
-      </AppContentSheet>
+        )}
+      </section>
 
       <input
         ref={homeUploadRef}
@@ -210,11 +216,36 @@ export function HomeView() {
         accept="audio/*,video/*,.mp3,.wav,.m4a,.aac,.flac,.ogg"
         onChange={handleHomeUpload}
       />
-      <FloatingNav
-        onUploadClick={() => {
-          if (!uploading) homeUploadRef.current?.click();
-        }}
-      />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[70px] bg-gradient-to-b from-[rgba(215,213,200,0)] to-[#d7d5c8]" />
+
+      <nav className="fixed bottom-5 left-1/2 z-20 -translate-x-1/2 rounded-[64px] bg-black px-[10px] py-[4.8px] shadow-[0px_4px_4px_0px_rgba(0,0,0,0.25)]">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/record"
+            className="flex h-10 w-10 items-center justify-center rounded-[48px] bg-[rgba(247,247,247,0.2)] p-1"
+            aria-label="Record"
+          >
+            <img src={ICON_AIRPLAY} alt="" className="h-[18px] w-[18px]" />
+          </Link>
+          <button
+            type="button"
+            onClick={() => {
+              if (!uploading) homeUploadRef.current?.click();
+            }}
+            className="flex h-10 w-10 items-center justify-center rounded-[48px] p-1"
+            aria-label="Upload"
+          >
+            <img src={ICON_UPLOAD} alt="" className="h-[18px] w-[18px]" />
+          </button>
+          <Link
+            href="/recordings"
+            className="flex h-10 w-10 items-center justify-center rounded-[48px] p-1"
+            aria-label="Recordings"
+          >
+            <img src={ICON_ACTIVITY} alt="" className="h-[18px] w-[18px]" />
+          </Link>
+        </div>
+      </nav>
     </div>
   );
 }

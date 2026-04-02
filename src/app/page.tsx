@@ -5,8 +5,8 @@ export default function Home() {
   return (
     <main className="min-h-dvh flex-1 font-sans">
       <MobileShell
-        frameClassName="bg-[#141414]"
-        innerClassName="bg-[#1A1A1A]"
+        frameClassName="bg-[#d7d5c8]"
+        innerClassName="bg-[#d7d5c8]"
       >
         <HomeView />
       </MobileShell>
