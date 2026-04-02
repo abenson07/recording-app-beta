@@ -17,6 +17,7 @@ function navActiveIndex(pathname: string): number {
   if (pathname === "/") return 0;
   if (pathname === "/record") return 1;
   if (pathname === "/projects") return 2;
+  if (pathname === "/project/new") return 3;
   return -1;
 }
 
@@ -80,9 +81,33 @@ export function FloatingNav({ centerHref, onUploadClick }: Props) {
             <WaveformGlyph className="h-4 w-4" />
             <span className="sr-only">All projects</span>
           </Link>
+
+          <Link
+            href="/project/new"
+            className={`flex size-10 items-center justify-center rounded-[48px] transition-colors duration-200 ${
+              activeIndex === 3 ? "bg-white/20 text-[#f7f7f7]" : "text-[#f7f7f7] hover:bg-white/10"
+            }`}
+            aria-current={activeIndex === 3 ? "page" : undefined}
+            aria-label="New project"
+          >
+            <PlusGlyph className="h-4 w-4" />
+          </Link>
         </div>
       </nav>
     </>
+  );
+}
+
+function PlusGlyph({ className = "h-6 w-6" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M12 5.5v13M5.5 12h13"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 

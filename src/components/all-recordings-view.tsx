@@ -134,6 +134,7 @@ export function AllRecordingsView() {
                     <ActivityCard
                       variant="recording"
                       state="open"
+                      onClick={() => setOpenRecordingId(null)}
                       title={item.title ?? "Untitled"}
                       subtitle={subtitle}
                       summary={summary || undefined}

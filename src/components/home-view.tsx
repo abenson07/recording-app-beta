@@ -177,6 +177,7 @@ export function HomeView() {
                     <ActivityCard
                       variant="recording"
                       state="open"
+                      onClick={() => setOpenRecordingId(null)}
                       title={entry.title}
                       subtitle={entry.subtitle}
                       summary={

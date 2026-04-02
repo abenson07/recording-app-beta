@@ -148,6 +148,7 @@ export function ProjectView({ projectId }: { projectId: string }) {
                     <ActivityCard
                       variant="recording"
                       state="open"
+                      onClick={() => setOpenRecordingId(null)}
                       title={item.title ?? "Untitled"}
                       subtitle={`${formatRelativeTime(touchIso)} - ${dur}`}
                       summary={summary || undefined}
