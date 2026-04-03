@@ -14,12 +14,24 @@ export type RecordingProjectRow = {
   created_at: string;
 };
 
+/** Grouping of recording items inside one project (optional). */
+export type RecordingProjectFolderRow = {
+  id: string;
+  project_id: string;
+  name: string;
+  summary: string | null;
+  created_at: string;
+  updated_at?: string;
+};
+
 export type RecordingItemRow = {
   id: string;
   title: string | null;
   created_at: string;
   updated_at?: string;
   project_id: string | null;
+  /** Present when row includes the column; null/omit = not in a folder. */
+  folder_id?: string | null;
   recording_files: RecordingFileRow[] | null;
 };
 

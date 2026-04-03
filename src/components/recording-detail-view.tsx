@@ -5,6 +5,7 @@ import { persistRecordingBlob } from "@/lib/persist-recording";
 import type {
   RecordingFileRow,
   RecordingItemRow,
+  RecordingProjectFolderRow,
   RecordingProjectRow,
 } from "@/lib/recording-types";
 import {
@@ -29,11 +30,16 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
   const router = useRouter();
   const [item, setItem] = useState<RecordingItemRow | null>(null);
   const [project, setProject] = useState<RecordingProjectRow | null>(null);
+  const [folder, setFolder] = useState<RecordingProjectFolderRow | null>(null);
+  const [projectFolders, setProjectFolders] = useState<RecordingProjectFolderRow[]>(
+    [],
+  );
   const [projects, setProjects] = useState<RecordingProjectRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [projectError, setProjectError] = useState<string | null>(null);
   const [updatingProject, setUpdatingProject] = useState(false);
+  const [updatingFolder, setUpdatingFolder] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
   const [titleError, setTitleError] = useState<string | null>(null);
@@ -55,7 +61,7 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
       supabase
         .from("recording_items")
         .select(
-          "id, title, created_at, updated_at, project_id, recording_files (id, sequence_index, transcript, storage_path, duration, created_at)",
+          "id, title, created_at, updated_at, project_id, folder_id, recording_files (id, sequence_index, transcript, storage_path, duration, created_at)",
         )
         .eq("id", recordingId)
         .maybeSingle(),
@@ -83,14 +89,31 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
     setItem(rec);
 
     if (rec.project_id) {
-      const { data: proj } = await supabase
-        .from("recording_projects")
-        .select("id, name, summary, created_at")
-        .eq("id", rec.project_id)
-        .maybeSingle();
+      const [{ data: proj }, { data: folderRows }] = await Promise.all([
+        supabase
+          .from("recording_projects")
+          .select("id, name, summary, created_at")
+          .eq("id", rec.project_id)
+          .maybeSingle(),
+        supabase
+          .from("recording_project_folders")
+          .select("id, project_id, name, summary, created_at, updated_at")
+          .eq("project_id", rec.project_id)
+          .order("name", { ascending: true }),
+      ]);
       setProject((proj as RecordingProjectRow) ?? null);
+      const flist = (folderRows as RecordingProjectFolderRow[]) ?? [];
+      setProjectFolders(flist);
+      if (rec.folder_id) {
+        const f = flist.find((x) => x.id === rec.folder_id) ?? null;
+        setFolder(f);
+      } else {
+        setFolder(null);
+      }
     } else {
       setProject(null);
+      setFolder(null);
+      setProjectFolders([]);
     }
 
     setLoading(false);
@@ -139,27 +162,78 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
 
     const prevItem = item;
     const prevProject = project;
+    const prevFolder = folder;
+    const prevFolders = projectFolders;
     const nextProj =
       nextProjectId === null
         ? null
         : (projects.find((p) => p.id === nextProjectId) ?? null);
 
-    setItem({ ...item, project_id: nextProjectId });
+    setItem({
+      ...item,
+      project_id: nextProjectId,
+      folder_id: null,
+    });
     setProject(nextProj);
+    setFolder(null);
+    setProjectFolders([]);
 
     const supabase = createClient();
     const { error } = await supabase
       .from("recording_items")
-      .update({ project_id: nextProjectId })
+      .update({ project_id: nextProjectId, folder_id: null })
       .eq("id", item.id);
 
     if (error) {
       setProjectError(error.message);
       setItem(prevItem);
       setProject(prevProject);
+      setFolder(prevFolder);
+      setProjectFolders(prevFolders);
+    } else if (nextProjectId) {
+      const { data: folderRows } = await supabase
+        .from("recording_project_folders")
+        .select("id, project_id, name, summary, created_at, updated_at")
+        .eq("project_id", nextProjectId)
+        .order("name", { ascending: true });
+      setProjectFolders((folderRows as RecordingProjectFolderRow[]) ?? []);
     }
 
     setUpdatingProject(false);
+  };
+
+  const handleFolderChange = async (nextFolderId: string | null) => {
+    if (!item) return;
+    if (!item.project_id) {
+      setProjectError("Assign a project before filing into a folder.");
+      return;
+    }
+    setProjectError(null);
+    setUpdatingFolder(true);
+
+    const prevItem = item;
+    const prevFolder = folder;
+    const nextF =
+      nextFolderId === null
+        ? null
+        : (projectFolders.find((f) => f.id === nextFolderId) ?? null);
+
+    setItem({ ...item, folder_id: nextFolderId });
+    setFolder(nextF);
+
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("recording_items")
+      .update({ folder_id: nextFolderId })
+      .eq("id", item.id);
+
+    if (error) {
+      setProjectError(error.message);
+      setItem(prevItem);
+      setFolder(prevFolder);
+    }
+
+    setUpdatingFolder(false);
   };
 
   const handleRename = async () => {
@@ -210,7 +284,12 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
       setDeleteError(error.message);
       return;
     }
-    const dest = item.project_id ? `/project/${item.project_id}` : "/";
+    const dest =
+      item.project_id && item.folder_id
+        ? `/project/${item.project_id}/folder/${item.folder_id}`
+        : item.project_id
+          ? `/project/${item.project_id}`
+          : "/";
     router.push(dest);
   };
 
@@ -240,7 +319,7 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
 
     const { error: moveErr } = await supabase
       .from("recording_items")
-      .update({ project_id: createdProject.id })
+      .update({ project_id: createdProject.id, folder_id: null })
       .eq("id", item.id);
 
     if (moveErr) {
@@ -252,7 +331,11 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
     const newProject = createdProject as RecordingProjectRow;
     setProjects((prev) => [newProject, ...prev]);
     setProject(newProject);
-    setItem((prev) => (prev ? { ...prev, project_id: newProject.id } : prev));
+    setFolder(null);
+    setProjectFolders([]);
+    setItem((prev) =>
+      prev ? { ...prev, project_id: newProject.id, folder_id: null } : prev,
+    );
     setShowMoveOptions(false);
     setCreatingProject(false);
     router.push(`/project/${newProject.id}`);
@@ -317,6 +400,17 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
               <Link href={`/project/${project.id}`} className="font-medium text-black/75 hover:underline">
                 {project.name}
               </Link>
+              {folder ? (
+                <>
+                  <span>·</span>
+                  <Link
+                    href={`/project/${project.id}/folder/${folder.id}`}
+                    className="font-medium text-black/75 hover:underline"
+                  >
+                    {folder.name}
+                  </Link>
+                </>
+              ) : null}
             </>
           ) : (
             <>
@@ -447,6 +541,36 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
                     </option>
                   ))}
                 </select>
+                {item.project_id ? (
+                  <>
+                    <label htmlFor="recording-folder" className="text-sm text-black/65">
+                      Folder (optional)
+                    </label>
+                    <select
+                      id="recording-folder"
+                      value={item.folder_id ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        void handleFolderChange(v === "" ? null : v);
+                      }}
+                      disabled={updatingFolder || updatingProject}
+                      className="w-full rounded-[10px] border border-[#D9D7CA] bg-white px-3 py-2.5 text-sm text-neutral-800 outline-none focus-visible:ring-2 focus-visible:ring-black/20 disabled:opacity-50"
+                    >
+                      <option value="">No folder</option>
+                      {projectFolders.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.name}
+                        </option>
+                      ))}
+                    </select>
+                    {projectFolders.length === 0 ? (
+                      <p className="text-xs text-neutral-500">
+                        No folders in this project yet. Create one from the project
+                        screen.
+                      </p>
+                    ) : null}
+                  </>
+                ) : null}
               </div>
             ) : null}
 

@@ -1,5 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { RecordingFileRow, RecordingItemRow, RecordingProjectRow } from "./recording-types";
+import type {
+  RecordingFileRow,
+  RecordingItemRow,
+  RecordingProjectFolderRow,
+  RecordingProjectRow,
+} from "./recording-types";
 
 function nextSequenceIndex(
   files: RecordingFileRow[] | null | undefined,
@@ -21,6 +26,9 @@ export type PersistRecordingContext = {
   items: RecordingItemRow[];
   newItemProjectId: string;
   projects: RecordingProjectRow[];
+  /** When creating a new item in a project, file it under this folder (must belong to that project). */
+  newItemFolderId?: string | null;
+  folders?: RecordingProjectFolderRow[];
 };
 
 /**
@@ -89,11 +97,22 @@ export async function persistRecordingBlob(
         ? ctx.newItemProjectId
         : null;
 
+    const rawFolderId = ctx.newItemFolderId?.trim() ?? "";
+    const folderId =
+      projectId &&
+      rawFolderId &&
+      (ctx.folders ?? []).some(
+        (f) => f.id === rawFolderId && f.project_id === projectId,
+      )
+        ? rawFolderId
+        : null;
+
     const { data: itemRow, error: itemErr } = await supabase
       .from("recording_items")
       .insert({
         title,
         ...(projectId ? { project_id: projectId } : {}),
+        ...(folderId ? { folder_id: folderId } : {}),
       })
       .select("id")
       .single();
