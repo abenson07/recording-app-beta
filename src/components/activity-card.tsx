@@ -1,5 +1,9 @@
+"use client";
+
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
+import { useLongPress } from "@/hooks/use-long-press";
 import { FolderGlyph, WaveformGlyph } from "@/components/list-row-card";
 
 type CardBaseProps = {
@@ -8,6 +12,8 @@ type CardBaseProps = {
   href?: string;
   className?: string;
   onClick?: () => void;
+  /** When set with `href`, long-press opens actions; tap still navigates. */
+  onLongPress?: () => void;
 };
 
 type RecordingCardProps = CardBaseProps & {
@@ -30,7 +36,12 @@ export type ActivityCardProps = RecordingCardProps | ProjectCardProps;
 export function ActivityCard(props: ActivityCardProps) {
   const state = props.state ?? "default";
   const isOpenRecording = props.variant === "recording" && state === "open";
-  const navigateWholeCard = Boolean(props.href) && !isOpenRecording;
+  const wholeCardNav = Boolean(props.href) && !isOpenRecording;
+  const useLink = wholeCardNav && !props.onLongPress;
+  const useLongPressNav = wholeCardNav && Boolean(props.onLongPress);
+  /** Long-press only (e.g. recording file rows with no navigation). */
+  const useLongPressOnly =
+    Boolean(props.onLongPress) && !props.href && !isOpenRecording;
 
   const className = `rounded-[10px] bg-[#EAE9E5] px-3 py-4 ${isOpenRecording ? "space-y-3.5" : ""} ${props.className ?? ""}`;
 
@@ -39,7 +50,7 @@ export function ActivityCard(props: ActivityCardProps) {
       <CardHeader
         title={props.title}
         subtitle={props.subtitle}
-        href={navigateWholeCard ? undefined : props.href}
+        href={wholeCardNav ? undefined : props.href}
         variant={props.variant}
       />
 
@@ -74,7 +85,7 @@ export function ActivityCard(props: ActivityCardProps) {
     </>
   );
 
-  if (navigateWholeCard) {
+  if (useLink) {
     return (
       <Link href={props.href!} className={`block ${className}`}>
         {inner}
@@ -82,10 +93,96 @@ export function ActivityCard(props: ActivityCardProps) {
     );
   }
 
+  if (useLongPressNav) {
+    return (
+      <LongPressCardShell
+        className={className}
+        href={props.href!}
+        onLongPress={props.onLongPress!}
+      >
+        {inner}
+      </LongPressCardShell>
+    );
+  }
+
+  if (useLongPressOnly) {
+    return (
+      <LongPressOnlyShell className={className} onLongPress={props.onLongPress!}>
+        {inner}
+      </LongPressOnlyShell>
+    );
+  }
+
   return (
     <article className={className} onClick={props.onClick}>
       {inner}
     </article>
+  );
+}
+
+function LongPressOnlyShell({
+  className,
+  onLongPress,
+  children,
+}: {
+  className: string;
+  onLongPress: () => void;
+  children: ReactNode;
+}) {
+  const lp = useLongPress({ onLongPress });
+
+  return (
+    <div
+      className={`block select-none ${className}`}
+      onPointerDown={lp.onPointerDown}
+      onPointerUp={lp.onPointerUp}
+      onPointerCancel={lp.onPointerCancel}
+      onPointerLeave={lp.onPointerLeave}
+      onClick={() => {
+        lp.consumeClick();
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function LongPressCardShell({
+  className,
+  href,
+  onLongPress,
+  children,
+}: {
+  className: string;
+  href: string;
+  onLongPress: () => void;
+  children: ReactNode;
+}) {
+  const router = useRouter();
+  const lp = useLongPress({ onLongPress });
+
+  return (
+    <div
+      role="link"
+      tabIndex={0}
+      className={`block cursor-pointer select-none ${className}`}
+      onPointerDown={lp.onPointerDown}
+      onPointerUp={lp.onPointerUp}
+      onPointerCancel={lp.onPointerCancel}
+      onPointerLeave={lp.onPointerLeave}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          router.push(href);
+        }
+      }}
+      onClick={() => {
+        if (lp.consumeClick()) return;
+        router.push(href);
+      }}
+    >
+      {children}
+    </div>
   );
 }
 

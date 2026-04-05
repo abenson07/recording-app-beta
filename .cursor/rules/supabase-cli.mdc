@@ -1,0 +1,16 @@
+---
+description: Run Supabase CLI for migrations and DB tasks; do not only tell the user to run commands
+alwaysApply: true
+---
+
+# Supabase CLI — run it here
+
+When work requires **Supabase** (migrations, schema sync, local DB, linked remote, migration history):
+
+1. **Execute the commands yourself** in the project root (with network when needed). Do not stop at “run this locally” unless the environment truly cannot run them (e.g. no CLI, no link, missing secrets).
+2. Prefer **`npx supabase`** if `supabase` is not on `PATH`.
+3. Use non-interactive flags where supported (e.g. **`--yes`** for `db push`) so commands do not block on prompts.
+4. **Remote vs history:** If `db push` fails because objects already exist but migration history is missing, use **`supabase migration repair`** for the already-applied versions, then push again.
+5. After adding or changing files under **`supabase/migrations/`**, apply them with **`supabase db push`** (linked remote) or **`supabase db reset`** / migration up for local, matching what the task requires.
+
+Examples: `npx supabase migration list --linked`, `npx supabase db push --yes`, `npx supabase migration repair <version> --status applied --linked --yes`.

@@ -1,0 +1,3 @@
+-- Replaced by Supabase migration:
+--   supabase/migrations/20260405160000_recording_project_folders_anon_and_trigger.sql
+-- Apply with: npx supabase db push (linked project)

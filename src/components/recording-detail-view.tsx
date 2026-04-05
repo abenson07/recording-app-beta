@@ -21,6 +21,9 @@ import {
 import { TranscriptMarkdownSummary } from "@/components/transcript-markdown-summary";
 import { FloatingNav } from "@/components/floating-nav";
 import { ActivityCard } from "@/components/activity-card";
+import { RecordingFileActionsSheet } from "@/components/recording-file-actions-sheet";
+import { RecordingItemActionsSheet } from "@/components/recording-item-actions-sheet";
+import { useLongPress } from "@/hooks/use-long-press";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -40,20 +43,10 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
   const [projects, setProjects] = useState<RecordingProjectRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
-  const [projectError, setProjectError] = useState<string | null>(null);
-  const [updatingProject, setUpdatingProject] = useState(false);
-  const [updatingFolder, setUpdatingFolder] = useState(false);
-  const [renaming, setRenaming] = useState(false);
-  const [draftTitle, setDraftTitle] = useState("");
-  const [titleError, setTitleError] = useState<string | null>(null);
-  const [renamingFileId, setRenamingFileId] = useState<string | null>(null);
-  const [draftFileTitle, setDraftFileTitle] = useState("");
-  const [fileTitleError, setFileTitleError] = useState<string | null>(null);
-  const [showMoveOptions, setShowMoveOptions] = useState(false);
-  const [creatingProject, setCreatingProject] = useState(false);
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [itemSheetOpen, setItemSheetOpen] = useState(false);
+  const [fileSheetFile, setFileSheetFile] = useState<RecordingFileRow | null>(
+    null,
+  );
   const detailUploadRef = useRef<HTMLInputElement>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -61,7 +54,6 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
   const load = useCallback(async () => {
     const supabase = createClient();
     setLoading(true);
-    setProjectError(null);
 
     const [itemRes, projectsRes] = await Promise.all([
       supabase
@@ -161,195 +153,8 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
     await load();
   };
 
-  const handleProjectChange = async (nextProjectId: string | null) => {
-    if (!item) return;
-    setProjectError(null);
-    setUpdatingProject(true);
-
-    const prevItem = item;
-    const prevProject = project;
-    const prevFolder = folder;
-    const prevFolders = projectFolders;
-    const nextProj =
-      nextProjectId === null
-        ? null
-        : (projects.find((p) => p.id === nextProjectId) ?? null);
-
-    setItem({
-      ...item,
-      project_id: nextProjectId,
-      folder_id: null,
-    });
-    setProject(nextProj);
-    setFolder(null);
-    setProjectFolders([]);
-
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("recording_items")
-      .update({ project_id: nextProjectId, folder_id: null })
-      .eq("id", item.id);
-
-    if (error) {
-      setProjectError(error.message);
-      setItem(prevItem);
-      setProject(prevProject);
-      setFolder(prevFolder);
-      setProjectFolders(prevFolders);
-    } else if (nextProjectId) {
-      const { data: folderRows } = await supabase
-        .from("recording_project_folders")
-        .select("id, project_id, name, summary, created_at, updated_at")
-        .eq("project_id", nextProjectId)
-        .order("name", { ascending: true });
-      setProjectFolders((folderRows as RecordingProjectFolderRow[]) ?? []);
-    }
-
-    setUpdatingProject(false);
-  };
-
-  const handleFolderChange = async (nextFolderId: string | null) => {
-    if (!item) return;
-    if (!item.project_id) {
-      setProjectError("Assign a project before filing into a folder.");
-      return;
-    }
-    setProjectError(null);
-    setUpdatingFolder(true);
-
-    const prevItem = item;
-    const prevFolder = folder;
-    const nextF =
-      nextFolderId === null
-        ? null
-        : (projectFolders.find((f) => f.id === nextFolderId) ?? null);
-
-    setItem({ ...item, folder_id: nextFolderId });
-    setFolder(nextF);
-
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("recording_items")
-      .update({ folder_id: nextFolderId })
-      .eq("id", item.id);
-
-    if (error) {
-      setProjectError(error.message);
-      setItem(prevItem);
-      setFolder(prevFolder);
-    }
-
-    setUpdatingFolder(false);
-  };
-
-  const handleRenameFile = async (fileId: string) => {
-    if (!item) return;
-    const next = draftFileTitle.trim();
-    if (!next) {
-      setFileTitleError("Name cannot be empty.");
-      return;
-    }
-
-    const files = sortedFiles(item.recording_files);
-    const target = files.find((f) => f.id === fileId);
-    if (!target) return;
-
-    const prevStored = target.title?.trim() ?? "";
-    if (next === prevStored) {
-      setRenamingFileId(null);
-      setFileTitleError(null);
-      return;
-    }
-
-    setFileTitleError(null);
-    const prevTitle = target.title;
-    const nextFiles = files.map((f) =>
-      f.id === fileId ? { ...f, title: next } : f,
-    );
-    setItem({ ...item, recording_files: nextFiles });
-
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("recording_files")
-      .update({ title: next })
-      .eq("id", fileId);
-
-    if (error) {
-      setFileTitleError(error.message);
-      setItem({
-        ...item,
-        recording_files: files.map((f) =>
-          f.id === fileId ? { ...f, title: prevTitle ?? null } : f,
-        ),
-      });
-      return;
-    }
-
-    setRenamingFileId(null);
-  };
-
-  const handleRename = async () => {
-    if (!item) return;
-    const next = draftTitle.trim();
-    if (!next) {
-      setTitleError("Name cannot be empty.");
-      return;
-    }
-    if (next === (item.title ?? "").trim()) {
-      setRenaming(false);
-      setTitleError(null);
-      return;
-    }
-
-    setTitleError(null);
-    setRenaming(true);
-    const prev = item.title ?? "";
-    setItem({ ...item, title: next });
-
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("recording_items")
-      .update({ title: next })
-      .eq("id", item.id);
-
-    if (error) {
-      setTitleError(error.message);
-      setItem({ ...item, title: prev });
-      setRenaming(false);
-      return;
-    }
-
-    setRenaming(false);
-  };
-
-  const handleDeleteRecording = async () => {
-    if (!item) return;
-    setDeleteError(null);
-    setDeleting(true);
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("recording_items")
-      .delete()
-      .eq("id", item.id);
-    setDeleting(false);
-    if (error) {
-      setDeleteError(error.message);
-      return;
-    }
-    const dest =
-      item.project_id && item.folder_id
-        ? `/project/${item.project_id}/folder/${item.folder_id}`
-        : item.project_id
-          ? `/project/${item.project_id}`
-          : "/";
-    router.push(dest);
-  };
-
   const handleCreateProjectFromRecording = async () => {
-    if (!item) return;
-
-    setProjectError(null);
-    setCreatingProject(true);
+    if (!item) throw new Error("Recording not loaded");
 
     const supabase = createClient();
     const baseTitle = (item.title ?? "").trim() || "Recording";
@@ -364,9 +169,7 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
       .single();
 
     if (createErr || !createdProject) {
-      setProjectError(createErr?.message ?? "Failed to create project.");
-      setCreatingProject(false);
-      return;
+      throw new Error(createErr?.message ?? "Failed to create project.");
     }
 
     const { error: moveErr } = await supabase
@@ -375,9 +178,7 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
       .eq("id", item.id);
 
     if (moveErr) {
-      setProjectError(moveErr.message);
-      setCreatingProject(false);
-      return;
+      throw new Error(moveErr.message);
     }
 
     const newProject = createdProject as RecordingProjectRow;
@@ -388,8 +189,6 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
     setItem((prev) =>
       prev ? { ...prev, project_id: newProject.id, folder_id: null } : prev,
     );
-    setShowMoveOptions(false);
-    setCreatingProject(false);
     router.push(`/project/${newProject.id}`);
   };
 
@@ -399,6 +198,10 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
     }, 0);
     return () => window.clearTimeout(timer);
   }, [load]);
+
+  const titleLongPress = useLongPress({
+    onLongPress: () => setItemSheetOpen(true),
+  });
 
   if (notFound && !loading) {
     return (
@@ -422,17 +225,25 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
       : undefined;
   const outputTranscriptMarkdown = combineRecordingFileTranscripts(files);
 
-  const activeProjectName = project?.name ?? "Unassigned (inbox)";
-
   return (
     <div className="relative flex min-h-dvh flex-1 flex-col bg-[#d7d5c8] px-4 pb-28 pt-24 text-[#1e1e1e]">
       <section>
-        <p
-          className="text-[30px] leading-[1.08]"
-          style={{ fontFamily: "var(--font-instrument-serif), serif" }}
+        <p className="sr-only">Long-press the title for rename, move, or delete</p>
+        <div
+          className="select-none"
+          onPointerDown={titleLongPress.onPointerDown}
+          onPointerUp={titleLongPress.onPointerUp}
+          onPointerCancel={titleLongPress.onPointerCancel}
+          onPointerLeave={titleLongPress.onPointerLeave}
+          onClick={() => titleLongPress.consumeClick()}
         >
-          {item?.title ?? "Recording outputs"}
-        </p>
+          <p
+            className="text-[30px] leading-[1.08]"
+            style={{ fontFamily: "var(--font-instrument-serif), serif" }}
+          >
+            {item?.title ?? "Recording outputs"}
+          </p>
+        </div>
         <div
           className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] text-black/65"
           style={{
@@ -487,197 +298,6 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
           />
         </section>
 
-        {!loading && item ? (
-          <section className="flex flex-col gap-2">
-            <div className="flex flex-wrap items-center gap-3 text-sm">
-              <button
-                type="button"
-                onClick={() => {
-                  setDeleteConfirmOpen(false);
-                  setShowMoveOptions((v) => !v);
-                }}
-                className="text-black/75 underline underline-offset-2"
-              >
-                Move recording
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setDeleteConfirmOpen(false);
-                  setDraftTitle(item.title ?? "");
-                  setTitleError(null);
-                  setRenaming((v) => !v);
-                }}
-                className="text-black/75 underline underline-offset-2"
-              >
-                Rename recording
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMoveOptions(false);
-                  setDeleteConfirmOpen((v) => !v);
-                }}
-                className="text-red-700/90 underline underline-offset-2"
-              >
-                Delete recording
-              </button>
-            </div>
-
-            {deleteConfirmOpen ? (
-              <div
-                className="flex flex-col gap-3 rounded-[10px] border border-red-200 bg-red-50/90 px-3 py-3"
-                role="dialog"
-                aria-labelledby="delete-recording-title"
-              >
-                <p id="delete-recording-title" className="text-sm text-neutral-800">
-                  Delete this recording and all its segments? This cannot be undone.
-                </p>
-                <div className="flex flex-wrap items-center gap-3 text-sm">
-                  <button
-                    type="button"
-                    onClick={() => void handleDeleteRecording()}
-                    disabled={deleting}
-                    className="font-medium text-red-800 underline underline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {deleting ? "Deleting…" : "Delete permanently"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDeleteConfirmOpen(false);
-                      setDeleteError(null);
-                    }}
-                    disabled={deleting}
-                    className="text-black/65 underline underline-offset-2 disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
-            {showMoveOptions ? (
-              <div className="flex flex-col gap-2">
-                <p className="text-sm text-black/65">
-                  Current project: {activeProjectName}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => void handleCreateProjectFromRecording()}
-                  disabled={creatingProject || updatingProject}
-                  className="w-fit text-sm text-black/75 underline underline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {creatingProject ? "Creating project..." : "Move to new project"}
-                </button>
-                <label htmlFor="recording-project" className="sr-only">
-                  Move recording to project
-                </label>
-                <select
-                  id="recording-project"
-                  value={item.project_id ?? ""}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    void handleProjectChange(v === "" ? null : v);
-                  }}
-                  disabled={updatingProject}
-                  className="w-full rounded-[10px] border border-[#D9D7CA] bg-white px-3 py-2.5 text-sm text-neutral-800 outline-none focus-visible:ring-2 focus-visible:ring-black/20 disabled:opacity-50"
-                >
-                  <option value="">Unassigned (inbox)</option>
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-                {item.project_id ? (
-                  <>
-                    <label htmlFor="recording-folder" className="text-sm text-black/65">
-                      Folder (optional)
-                    </label>
-                    <select
-                      id="recording-folder"
-                      value={item.folder_id ?? ""}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        void handleFolderChange(v === "" ? null : v);
-                      }}
-                      disabled={updatingFolder || updatingProject}
-                      className="w-full rounded-[10px] border border-[#D9D7CA] bg-white px-3 py-2.5 text-sm text-neutral-800 outline-none focus-visible:ring-2 focus-visible:ring-black/20 disabled:opacity-50"
-                    >
-                      <option value="">No folder</option>
-                      {projectFolders.map((f) => (
-                        <option key={f.id} value={f.id}>
-                          {f.name}
-                        </option>
-                      ))}
-                    </select>
-                    {projectFolders.length === 0 ? (
-                      <p className="text-xs text-neutral-500">
-                        No folders in this project yet. Create one from the project
-                        screen.
-                      </p>
-                    ) : null}
-                  </>
-                ) : null}
-              </div>
-            ) : null}
-
-            {renaming ? (
-              <div className="flex flex-col gap-2">
-                <label htmlFor="recording-title" className="sr-only">
-                  Recording name
-                </label>
-                <input
-                  id="recording-title"
-                  type="text"
-                  value={draftTitle}
-                  onChange={(e) => setDraftTitle(e.target.value)}
-                  placeholder="Recording name"
-                  className="w-full rounded-[10px] border border-[#D9D7CA] bg-white px-3 py-2.5 text-sm text-neutral-800 outline-none focus-visible:ring-2 focus-visible:ring-black/20"
-                />
-                <div className="flex items-center gap-3 text-sm">
-                  <button
-                    type="button"
-                    onClick={() => void handleRename()}
-                    className="text-black/75 underline underline-offset-2"
-                  >
-                    Save name
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRenaming(false);
-                      setTitleError(null);
-                    }}
-                    className="text-black/50 underline underline-offset-2"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
-            {projects.length === 0 && showMoveOptions ? (
-              <p className="text-xs text-neutral-500">
-                No projects yet. Create one from the home screen.
-              </p>
-            ) : null}
-            {projectError ? (
-              <p className="text-sm text-red-600">{projectError}</p>
-            ) : null}
-            {deleteError ? (
-              <p className="text-sm text-red-600">{deleteError}</p>
-            ) : null}
-            {titleError ? (
-              <p className="text-sm text-red-600">{titleError}</p>
-            ) : null}
-            {fileTitleError ? (
-              <p className="text-sm text-red-600">{fileTitleError}</p>
-            ) : null}
-          </section>
-        ) : null}
-
         <section className="flex flex-col gap-3">
           <AppSectionLabel>Recording files</AppSectionLabel>
           <ul className="flex flex-col gap-3">
@@ -692,59 +312,14 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
                 const segDate = f.created_at ?? item!.created_at;
                 const displayTitle = fileDisplayTitle(f);
                 return (
-                  <li key={f.id} className="flex flex-col gap-2">
+                  <li key={f.id}>
                     <ActivityCard
                       variant="recording"
                       state="default"
                       title={displayTitle}
                       subtitle={`${formatRelativeTime(segDate)} · ${formatDurationClock(f.duration ?? 0)}`}
+                      onLongPress={() => setFileSheetFile(f)}
                     />
-                    {renamingFileId === f.id ? (
-                      <div className="flex flex-col gap-2 pl-1">
-                        <label htmlFor={`file-title-${f.id}`} className="sr-only">
-                          Recording file name
-                        </label>
-                        <input
-                          id={`file-title-${f.id}`}
-                          type="text"
-                          value={draftFileTitle}
-                          onChange={(e) => setDraftFileTitle(e.target.value)}
-                          placeholder="File name"
-                          className="w-full rounded-[10px] border border-[#D9D7CA] bg-white px-3 py-2.5 text-sm text-neutral-800 outline-none focus-visible:ring-2 focus-visible:ring-black/20"
-                        />
-                        <div className="flex items-center gap-3 text-sm">
-                          <button
-                            type="button"
-                            onClick={() => void handleRenameFile(f.id)}
-                            className="text-black/75 underline underline-offset-2"
-                          >
-                            Save name
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setRenamingFileId(null);
-                              setFileTitleError(null);
-                            }}
-                            className="text-black/50 underline underline-offset-2"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRenamingFileId(f.id);
-                          setDraftFileTitle(displayTitle);
-                          setFileTitleError(null);
-                        }}
-                        className="w-fit pl-1 text-left text-sm text-black/65 underline underline-offset-2"
-                      >
-                        Rename file
-                      </button>
-                    )}
                   </li>
                 );
               })
@@ -770,6 +345,32 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
         onUploadClick={() => {
           if (!uploading && item) detailUploadRef.current?.click();
         }}
+      />
+
+      <RecordingItemActionsSheet
+        open={itemSheetOpen}
+        onClose={() => setItemSheetOpen(false)}
+        item={item}
+        projects={projects}
+        showDelete
+        onUpdated={() => void load()}
+        onDeleted={() => {
+          if (!item) return;
+          const dest =
+            item.project_id && item.folder_id
+              ? `/project/${item.project_id}/folder/${item.folder_id}`
+              : item.project_id
+                ? `/project/${item.project_id}`
+                : "/";
+          router.push(dest);
+        }}
+        onMoveToNewProject={handleCreateProjectFromRecording}
+      />
+      <RecordingFileActionsSheet
+        open={fileSheetFile !== null}
+        onClose={() => setFileSheetFile(null)}
+        file={fileSheetFile}
+        onUpdated={() => void load()}
       />
     </div>
   );

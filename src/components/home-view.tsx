@@ -17,6 +17,8 @@ import {
 } from "@/lib/recording-types";
 import { ActivityCard } from "@/components/activity-card";
 import { FloatingNav } from "@/components/floating-nav";
+import { RecordingItemActionsSheet } from "@/components/recording-item-actions-sheet";
+import { ProjectItemActionsSheet } from "@/components/project-item-actions-sheet";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const ICON_EQUALIZER = "https://www.figma.com/api/mcp/asset/d87ebf13-3af2-4601-90bd-7d87610d0018";
@@ -30,6 +32,11 @@ export function HomeView() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const homeUploadRef = useRef<HTMLInputElement>(null);
+  const [recordingSheetItem, setRecordingSheetItem] =
+    useState<RecordingItemRow | null>(null);
+  const [projectSheet, setProjectSheet] = useState<RecordingProjectRow | null>(
+    null,
+  );
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -112,6 +119,7 @@ export function HomeView() {
       return {
         id: item.id,
         type: "recording" as const,
+        item,
         href: `/recording/${item.id}`,
         title: item.title ?? "Recording",
         subtitle: subtitleParts.join(" · "),
@@ -123,6 +131,7 @@ export function HomeView() {
       return {
         id: project.id,
         type: "project" as const,
+        project,
         href: `/project/${project.id}`,
         title: project.name || "Project Name",
         subtitle: `${formatRelativeTime(project.created_at)} - ${count} recording${count === 1 ? "" : "s"}`,
@@ -198,6 +207,7 @@ export function HomeView() {
                     href={entry.href}
                     title={entry.title}
                     subtitle={entry.subtitle}
+                    onLongPress={() => setRecordingSheetItem(entry.item)}
                   />
                 ) : (
                   <ActivityCard
@@ -206,6 +216,7 @@ export function HomeView() {
                     href={entry.href}
                     title={entry.title}
                     subtitle={entry.subtitle}
+                    onLongPress={() => setProjectSheet(entry.project)}
                   />
                 )}
               </li>
@@ -225,6 +236,22 @@ export function HomeView() {
         onUploadClick={() => {
           if (!uploading) homeUploadRef.current?.click();
         }}
+      />
+
+      <RecordingItemActionsSheet
+        open={recordingSheetItem !== null}
+        onClose={() => setRecordingSheetItem(null)}
+        item={recordingSheetItem}
+        projects={projects}
+        onUpdated={() => void load()}
+      />
+      <ProjectItemActionsSheet
+        open={projectSheet !== null}
+        onClose={() => setProjectSheet(null)}
+        project={projectSheet}
+        projects={projects}
+        items={items}
+        onUpdated={() => void load()}
       />
     </div>
   );

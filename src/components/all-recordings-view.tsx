@@ -21,6 +21,7 @@ import {
 } from "@/components/app-screen";
 import { FloatingNav } from "@/components/floating-nav";
 import { ActivityCard } from "@/components/activity-card";
+import { RecordingItemActionsSheet } from "@/components/recording-item-actions-sheet";
 import { persistRecordingBlob } from "@/lib/persist-recording";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -33,6 +34,8 @@ export function AllRecordingsView() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const uploadRef = useRef<HTMLInputElement>(null);
+  const [recordingSheetItem, setRecordingSheetItem] =
+    useState<RecordingItemRow | null>(null);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -139,6 +142,7 @@ export function AllRecordingsView() {
                     href={`/recording/${item.id}`}
                     title={item.title ?? "Untitled"}
                     subtitle={subtitle}
+                    onLongPress={() => setRecordingSheetItem(item)}
                   />
                 </li>
               );
@@ -158,6 +162,13 @@ export function AllRecordingsView() {
         onUploadClick={() => {
           if (!uploading) uploadRef.current?.click();
         }}
+      />
+      <RecordingItemActionsSheet
+        open={recordingSheetItem !== null}
+        onClose={() => setRecordingSheetItem(null)}
+        item={recordingSheetItem}
+        projects={projects}
+        onUpdated={() => void load()}
       />
     </div>
   );

@@ -18,6 +18,7 @@ import {
 import { AppSectionLabel } from "@/components/app-screen";
 import { FloatingNav } from "@/components/floating-nav";
 import { ActivityCard } from "@/components/activity-card";
+import { RecordingItemActionsSheet } from "@/components/recording-item-actions-sheet";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -59,6 +60,9 @@ export function ProjectFolderView({
   const [deleteFolderError, setDeleteFolderError] = useState<string | null>(
     null,
   );
+  const [recordingSheetItem, setRecordingSheetItem] =
+    useState<RecordingItemRow | null>(null);
+  const [allProjects, setAllProjects] = useState<RecordingProjectRow[]>([]);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -75,6 +79,7 @@ export function ProjectFolderView({
       setProject(null);
       setFolder(null);
       setItems([]);
+      setAllProjects([]);
       setLoading(false);
       return;
     }
@@ -91,6 +96,7 @@ export function ProjectFolderView({
       setProject(proj as RecordingProjectRow);
       setFolder(null);
       setItems([]);
+      setAllProjects([]);
       setLoading(false);
       return;
     }
@@ -108,16 +114,23 @@ export function ProjectFolderView({
 
     setSiblingFolders((siblingRows as RecordingProjectFolderRow[]) ?? []);
 
-    const { data: itemRows } = await supabase
-      .from("recording_items")
-      .select(
-        "id, title, created_at, updated_at, project_id, folder_id, recording_files (id, sequence_index, title, transcript, storage_path, duration, created_at)",
-      )
-      .eq("project_id", projectId)
-      .eq("folder_id", folderId)
-      .order("created_at", { ascending: false });
+    const [{ data: itemRows }, { data: allProjRows }] = await Promise.all([
+      supabase
+        .from("recording_items")
+        .select(
+          "id, title, created_at, updated_at, project_id, folder_id, recording_files (id, sequence_index, title, transcript, storage_path, duration, created_at)",
+        )
+        .eq("project_id", projectId)
+        .eq("folder_id", folderId)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("recording_projects")
+        .select("id, name, summary, created_at")
+        .order("name", { ascending: true }),
+    ]);
 
     setItems((itemRows as RecordingItemRow[]) ?? []);
+    setAllProjects((allProjRows as RecordingProjectRow[]) ?? []);
     setLoading(false);
   }, [projectId, folderId]);
 
@@ -377,6 +390,7 @@ export function ProjectFolderView({
                     href={`/recording/${item.id}`}
                     title={item.title ?? "Untitled"}
                     subtitle={`${formatRelativeTime(touchIso)} - ${dur}`}
+                    onLongPress={() => setRecordingSheetItem(item)}
                   />
                   <p className="sr-only">
                     {segs} segment{segs === 1 ? "" : "s"}
@@ -399,6 +413,14 @@ export function ProjectFolderView({
         onUploadClick={() => {
           if (!uploading && project && folder) folderUploadRef.current?.click();
         }}
+      />
+
+      <RecordingItemActionsSheet
+        open={recordingSheetItem !== null}
+        onClose={() => setRecordingSheetItem(null)}
+        item={recordingSheetItem}
+        projects={allProjects}
+        onUpdated={() => void load()}
       />
 
       {deletePhase !== "idle" ? (
