@@ -19,12 +19,12 @@ import { AppSectionLabel } from "@/components/app-screen";
 import { FloatingNav } from "@/components/floating-nav";
 import { ActivityCard } from "@/components/activity-card";
 import { RecordingItemActionsSheet } from "@/components/recording-item-actions-sheet";
+import { SummaryMarkdownSection } from "@/components/transcript-markdown-summary";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -41,9 +41,6 @@ export function ProjectFolderView({
   const [items, setItems] = useState<RecordingItemRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
-  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
-  const [descriptionOverflows, setDescriptionOverflows] = useState(false);
-  const descriptionRef = useRef<HTMLParagraphElement>(null);
   const folderUploadRef = useRef<HTMLInputElement>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -250,23 +247,6 @@ export function ProjectFolderView({
       .find(Boolean) ||
     "Add a short note for this folder to keep context focused when you return.";
 
-  useLayoutEffect(() => {
-    if (descriptionExpanded) {
-      return;
-    }
-    const el = descriptionRef.current;
-    if (!el) {
-      return;
-    }
-    const measure = () => {
-      setDescriptionOverflows(el.scrollHeight > el.clientHeight + 1);
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [descriptionText, descriptionExpanded, loading]);
-
   if (notFound && !loading) {
     return (
       <div className="flex flex-1 flex-col bg-[#1A1A1A] px-5 py-10">
@@ -329,27 +309,11 @@ export function ProjectFolderView({
       </section>
 
       <section className="mt-6">
-        <p
-          ref={descriptionRef}
-          className={
-            descriptionExpanded
-              ? "text-[15px] leading-relaxed text-black/75"
-              : "line-clamp-4 overflow-hidden text-[15px] leading-relaxed text-black/75"
-          }
-        >
-          <span className="font-medium">Context: </span>
-          {descriptionText}
-        </p>
-        {descriptionExpanded || descriptionOverflows ? (
-          <button
-            type="button"
-            aria-expanded={descriptionExpanded}
-            onClick={() => setDescriptionExpanded((v) => !v)}
-            className="mt-1 inline-block text-left text-[12px] font-medium underline"
-          >
-            {descriptionExpanded ? "Show less" : "Read more"}
-          </button>
-        ) : null}
+        <SummaryMarkdownSection
+          label="Context:"
+          markdown={descriptionText}
+          loading={loading && !folder}
+        />
         <div className="mt-5">
           <button
             type="button"

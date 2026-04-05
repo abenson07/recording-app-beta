@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import Markdown, { type Components } from "react-markdown";
 
 const markdownComponents: Components = {
@@ -123,5 +123,93 @@ export function TranscriptMarkdownSummary({
         </button>
       ) : null}
     </div>
+  );
+}
+
+function summaryWithLabelMarkdown(label: string, body: string): string {
+  const trimmed = body.trim();
+  if (!trimmed) return "";
+  const key = label.trim().replace(/:\s*$/, "");
+  return `**${key}:**\n\n${trimmed}`;
+}
+
+/** Project / folder summary with line-clamp, read more, and Markdown body (e.g. `##` headings). */
+export function SummaryMarkdownSection({
+  label,
+  markdown,
+  loading = false,
+}: {
+  label: string;
+  markdown: string;
+  loading?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [isClampedOverflow, setIsClampedOverflow] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  const fullMarkdown = useMemo(
+    () => summaryWithLabelMarkdown(label, markdown),
+    [label, markdown],
+  );
+
+  useLayoutEffect(() => {
+    if (loading || !fullMarkdown) {
+      setIsClampedOverflow(false);
+      return;
+    }
+    if (expanded) {
+      return;
+    }
+
+    const el = contentRef.current;
+    if (!el) return;
+
+    const measure = () => {
+      setIsClampedOverflow(el.scrollHeight > el.clientHeight + 1);
+    };
+
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [fullMarkdown, expanded, loading]);
+
+  if (loading) {
+    return (
+      <p className="text-[15px] leading-relaxed text-black/75">Loading…</p>
+    );
+  }
+
+  if (!fullMarkdown) {
+    return null;
+  }
+
+  const showToggle = expanded || isClampedOverflow;
+
+  return (
+    <>
+      <div
+        ref={contentRef}
+        className={
+          expanded
+            ? "text-[15px] leading-relaxed text-black/75"
+            : "line-clamp-4 overflow-hidden text-[15px] leading-relaxed text-black/75"
+        }
+      >
+        <div className="[&_*:first-child]:mt-0">
+          <Markdown components={markdownComponents}>{fullMarkdown}</Markdown>
+        </div>
+      </div>
+      {showToggle ? (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-1 inline-block text-left text-[12px] font-medium underline"
+        >
+          {expanded ? "Show less" : "Read more"}
+        </button>
+      ) : null}
+    </>
   );
 }

@@ -19,11 +19,11 @@ import { AppSectionLabel } from "@/components/app-screen";
 import { FloatingNav } from "@/components/floating-nav";
 import { ActivityCard } from "@/components/activity-card";
 import { RecordingItemActionsSheet } from "@/components/recording-item-actions-sheet";
+import { SummaryMarkdownSection } from "@/components/transcript-markdown-summary";
 import Link from "next/link";
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -36,9 +36,6 @@ export function ProjectView({ projectId }: { projectId: string }) {
   const [loading, setLoading] = useState(true);
   const greetingName = "there";
   const [notFound, setNotFound] = useState(false);
-  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
-  const [descriptionOverflows, setDescriptionOverflows] = useState(false);
-  const descriptionRef = useRef<HTMLParagraphElement>(null);
   const projectUploadRef = useRef<HTMLInputElement>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -227,23 +224,6 @@ export function ProjectView({ projectId }: { projectId: string }) {
       .find(Boolean) ||
     "Add a project description to capture the context for this recording set.";
 
-  useLayoutEffect(() => {
-    if (descriptionExpanded) {
-      return;
-    }
-    const el = descriptionRef.current;
-    if (!el) {
-      return;
-    }
-    const measure = () => {
-      setDescriptionOverflows(el.scrollHeight > el.clientHeight + 1);
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [descriptionText, descriptionExpanded, loading]);
-
   if (notFound && !loading) {
     return (
       <div className="flex flex-1 flex-col bg-[#1A1A1A] px-5 py-10">
@@ -293,27 +273,11 @@ export function ProjectView({ projectId }: { projectId: string }) {
       </section>
 
       <section className="mt-6">
-        <p
-          ref={descriptionRef}
-          className={
-            descriptionExpanded
-              ? "text-[15px] leading-relaxed text-black/75"
-              : "line-clamp-4 overflow-hidden text-[15px] leading-relaxed text-black/75"
-          }
-        >
-          <span className="font-medium">Description: </span>
-          {descriptionText}
-        </p>
-        {descriptionExpanded || descriptionOverflows ? (
-          <button
-            type="button"
-            aria-expanded={descriptionExpanded}
-            onClick={() => setDescriptionExpanded((v) => !v)}
-            className="mt-1 inline-block text-left text-[12px] font-medium underline"
-          >
-            {descriptionExpanded ? "Show less" : "Read more"}
-          </button>
-        ) : null}
+        <SummaryMarkdownSection
+          label="Description:"
+          markdown={descriptionText}
+          loading={loading && !project}
+        />
       </section>
 
       <section className="mt-8 flex flex-col gap-3">
