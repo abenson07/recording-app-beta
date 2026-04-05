@@ -7,7 +7,9 @@ import type {
   RecordingProjectFolderRow,
   RecordingProjectRow,
 } from "@/lib/recording-types";
+import { combineRecordingFileTranscripts } from "@/lib/recording-combine";
 import {
+  displayNameFromFileName,
   formatDurationClock,
   formatRelativeTime,
   segmentCount,
@@ -73,7 +75,7 @@ export function ProjectView({ projectId }: { projectId: string }) {
       supabase
         .from("recording_items")
         .select(
-          "id, title, created_at, updated_at, project_id, folder_id, recording_files (id, sequence_index, transcript, storage_path, duration, created_at)",
+          "id, title, created_at, updated_at, project_id, folder_id, recording_files (id, sequence_index, title, transcript, storage_path, duration, created_at)",
         )
         .eq("project_id", projectId)
         .order("created_at", { ascending: false }),
@@ -183,7 +185,7 @@ export function ProjectView({ projectId }: { projectId: string }) {
         contentType: file.type || "application/octet-stream",
         durationSec: null,
         captureType: "file_upload",
-        newItemTitle: `Upload · ${file.name}`,
+        recordingFileTitle: displayNameFromFileName(file.name),
       },
       {
         appendToItemId: null,
@@ -210,8 +212,7 @@ export function ProjectView({ projectId }: { projectId: string }) {
   const descriptionText =
     project?.summary?.trim() ||
     items
-      .flatMap((i) => i.recording_files ?? [])
-      .map((f) => f.transcript?.trim() ?? "")
+      .map((i) => combineRecordingFileTranscripts(i.recording_files).trim())
       .find(Boolean) ||
     "Add a project description to capture the context for this recording set.";
 

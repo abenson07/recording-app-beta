@@ -1,11 +1,27 @@
 export type RecordingFileRow = {
   id: string;
   sequence_index: number;
+  /** User-visible segment name; null uses UI fallback from sequence_index. */
+  title: string | null;
   transcript: string | null;
   storage_path: string;
   duration: number | null;
   created_at?: string;
 };
+
+/** Basename without extension — default file title for uploads. */
+export function displayNameFromFileName(fileName: string): string {
+  const base = fileName.replace(/^.*[/\\]/, "");
+  const i = base.lastIndexOf(".");
+  if (i <= 0) return base;
+  return base.slice(0, i);
+}
+
+export function fileDisplayTitle(file: RecordingFileRow): string {
+  const t = file.title?.trim();
+  if (t) return t;
+  return `Recording file ${file.sequence_index + 1}`;
+}
 
 export type RecordingProjectRow = {
   id: string;
@@ -34,6 +50,20 @@ export type RecordingItemRow = {
   folder_id?: string | null;
   recording_files: RecordingFileRow[] | null;
 };
+
+/** Comma-separated segment names for list subtitles (optional). */
+export function recordingFileNamesPreview(
+  item: RecordingItemRow,
+  maxNames = 3,
+): string | null {
+  const files = [...(item.recording_files ?? [])].sort(
+    (a, b) => a.sequence_index - b.sequence_index,
+  );
+  if (files.length === 0) return null;
+  const names = files.map((f) => fileDisplayTitle(f));
+  if (names.length <= maxNames) return names.join(", ");
+  return `${names.slice(0, maxNames).join(", ")} +${names.length - maxNames} more`;
+}
 
 export function segmentCount(item: RecordingItemRow): number {
   return item.recording_files?.length ?? 0;

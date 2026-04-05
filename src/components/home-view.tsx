@@ -7,7 +7,14 @@ import type {
   RecordingItemRow,
   RecordingProjectRow,
 } from "@/lib/recording-types";
-import { formatRelativeTime } from "@/lib/recording-types";
+import {
+  displayNameFromFileName,
+  formatDurationClock,
+  formatRelativeTime,
+  recordingFileNamesPreview,
+  segmentCount,
+  totalDurationSec,
+} from "@/lib/recording-types";
 import { ActivityCard } from "@/components/activity-card";
 import { FloatingNav } from "@/components/floating-nav";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -35,7 +42,7 @@ export function HomeView() {
       supabase
         .from("recording_items")
         .select(
-          "id, title, created_at, updated_at, project_id, recording_files (id, sequence_index, transcript, storage_path, duration, created_at)",
+          "id, title, created_at, updated_at, project_id, recording_files (id, sequence_index, title, transcript, storage_path, duration, created_at)",
         )
         .order("created_at", { ascending: false }),
     ]);
@@ -60,7 +67,7 @@ export function HomeView() {
         contentType: file.type || "application/octet-stream",
         durationSec: null,
         captureType: "file_upload",
-        newItemTitle: `Upload · ${file.name}`,
+        recordingFileTitle: displayNameFromFileName(file.name),
       },
       {
         appendToItemId: null,
@@ -91,14 +98,26 @@ export function HomeView() {
   const projectCount = projects.length;
 
   const recentActivity = [
-    ...items.map((item) => ({
-      id: item.id,
-      type: "recording" as const,
-      href: `/recording/${item.id}`,
-      title: item.title ?? "Recording",
-      subtitle: `${formatRelativeTime(item.created_at)} - 2:49`,
-      at: Date.parse(item.created_at),
-    })),
+    ...items.map((item) => {
+      const touchIso = item.updated_at ?? item.created_at;
+      const dur = formatDurationClock(totalDurationSec(item));
+      const segs = segmentCount(item);
+      const names = recordingFileNamesPreview(item);
+      const subtitleParts = [
+        formatRelativeTime(touchIso),
+        dur,
+        `${segs} segment${segs === 1 ? "" : "s"}`,
+      ];
+      if (names) subtitleParts.push(names);
+      return {
+        id: item.id,
+        type: "recording" as const,
+        href: `/recording/${item.id}`,
+        title: item.title ?? "Recording",
+        subtitle: subtitleParts.join(" · "),
+        at: Date.parse(item.created_at),
+      };
+    }),
     ...projects.map((project) => {
       const count = itemsByProjectCount(project.id);
       return {

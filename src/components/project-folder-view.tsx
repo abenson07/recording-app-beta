@@ -7,7 +7,9 @@ import type {
   RecordingProjectFolderRow,
   RecordingProjectRow,
 } from "@/lib/recording-types";
+import { combineRecordingFileTranscripts } from "@/lib/recording-combine";
 import {
+  displayNameFromFileName,
   formatDurationClock,
   formatRelativeTime,
   segmentCount,
@@ -17,6 +19,7 @@ import { AppSectionLabel } from "@/components/app-screen";
 import { FloatingNav } from "@/components/floating-nav";
 import { ActivityCard } from "@/components/activity-card";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -43,6 +46,19 @@ export function ProjectFolderView({
   const folderUploadRef = useRef<HTMLInputElement>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const router = useRouter();
+  const [siblingFolders, setSiblingFolders] = useState<
+    RecordingProjectFolderRow[]
+  >([]);
+  const [deletePhase, setDeletePhase] = useState<"idle" | "choose" | "confirm">(
+    "idle",
+  );
+  /** Where to file recordings before removing this folder: null = project root. */
+  const [moveToFolderId, setMoveToFolderId] = useState<string | null>(null);
+  const [deletingFolder, setDeletingFolder] = useState(false);
+  const [deleteFolderError, setDeleteFolderError] = useState<string | null>(
+    null,
+  );
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -83,10 +99,19 @@ export function ProjectFolderView({
     setProject(proj as RecordingProjectRow);
     setFolder(fol as RecordingProjectFolderRow);
 
+    const { data: siblingRows } = await supabase
+      .from("recording_project_folders")
+      .select("id, project_id, name, summary, created_at, updated_at")
+      .eq("project_id", projectId)
+      .neq("id", folderId)
+      .order("created_at", { ascending: true });
+
+    setSiblingFolders((siblingRows as RecordingProjectFolderRow[]) ?? []);
+
     const { data: itemRows } = await supabase
       .from("recording_items")
       .select(
-        "id, title, created_at, updated_at, project_id, folder_id, recording_files (id, sequence_index, transcript, storage_path, duration, created_at)",
+        "id, title, created_at, updated_at, project_id, folder_id, recording_files (id, sequence_index, title, transcript, storage_path, duration, created_at)",
       )
       .eq("project_id", projectId)
       .eq("folder_id", folderId)
@@ -115,7 +140,7 @@ export function ProjectFolderView({
         contentType: file.type || "application/octet-stream",
         durationSec: null,
         captureType: "file_upload",
-        newItemTitle: `Upload · ${file.name}`,
+        recordingFileTitle: displayNameFromFileName(file.name),
       },
       {
         appendToItemId: null,
@@ -134,6 +159,70 @@ export function ProjectFolderView({
     await load();
   };
 
+  const closeDeleteFlow = () => {
+    setDeletePhase("idle");
+    setDeleteFolderError(null);
+    setMoveToFolderId(null);
+  };
+
+  const startDeleteFolder = () => {
+    setDeleteFolderError(null);
+    if (items.length === 0) {
+      setDeletePhase("confirm");
+      return;
+    }
+    setMoveToFolderId(
+      siblingFolders.length > 0 ? siblingFolders[0].id : null,
+    );
+    setDeletePhase("choose");
+  };
+
+  const goToConfirmAfterChoose = () => {
+    setDeleteFolderError(null);
+    setDeletePhase("confirm");
+  };
+
+  const destinationLabel =
+    moveToFolderId === null
+      ? "Project (no folder)"
+      : siblingFolders.find((f) => f.id === moveToFolderId)?.name ??
+        "Another folder";
+
+  const runDeleteFolder = async () => {
+    if (!folder) return;
+    setDeletingFolder(true);
+    setDeleteFolderError(null);
+    const supabase = createClient();
+
+    if (items.length > 0) {
+      const { error: moveErr } = await supabase
+        .from("recording_items")
+        .update({ folder_id: moveToFolderId })
+        .eq("project_id", projectId)
+        .eq("folder_id", folderId);
+
+      if (moveErr) {
+        setDeleteFolderError(moveErr.message);
+        setDeletingFolder(false);
+        return;
+      }
+    }
+
+    const { error: delErr } = await supabase
+      .from("recording_project_folders")
+      .delete()
+      .eq("id", folderId)
+      .eq("project_id", projectId);
+
+    setDeletingFolder(false);
+    if (delErr) {
+      setDeleteFolderError(delErr.message);
+      return;
+    }
+    closeDeleteFlow();
+    router.push(`/project/${projectId}`);
+  };
+
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void load();
@@ -144,8 +233,7 @@ export function ProjectFolderView({
   const descriptionText =
     folder?.summary?.trim() ||
     items
-      .flatMap((i) => i.recording_files ?? [])
-      .map((f) => f.transcript?.trim() ?? "")
+      .map((i) => combineRecordingFileTranscripts(i.recording_files).trim())
       .find(Boolean) ||
     "Add a short note for this folder to keep context focused when you return.";
 
@@ -249,6 +337,16 @@ export function ProjectFolderView({
             {descriptionExpanded ? "Show less" : "Read more"}
           </button>
         ) : null}
+        <div className="mt-5">
+          <button
+            type="button"
+            onClick={startDeleteFolder}
+            disabled={loading || !folder}
+            className="text-[13px] font-medium text-red-700/90 underline decoration-red-700/30 underline-offset-2 transition-colors hover:text-red-800 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Delete folder
+          </button>
+        </div>
       </section>
 
       <section className="mt-8 flex flex-col gap-3">
@@ -302,6 +400,135 @@ export function ProjectFolderView({
           if (!uploading && project && folder) folderUploadRef.current?.click();
         }}
       />
+
+      {deletePhase !== "idle" ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-4 sm:items-center"
+          role="presentation"
+          onClick={() => !deletingFolder && closeDeleteFlow()}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-folder-dialog-title"
+            className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-black/[0.08] bg-[#f2f1ed] p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {deletePhase === "choose" ? (
+              <>
+                <h2
+                  id="delete-folder-dialog-title"
+                  className="text-lg font-medium text-[#1e1e1e]"
+                  style={{ fontFamily: "var(--font-instrument-serif), serif" }}
+                >
+                  Move recordings first
+                </h2>
+                <p className="mt-2 text-sm leading-relaxed text-black/70">
+                  Choose where to file{" "}
+                  {items.length === 1
+                    ? "this recording"
+                    : `these ${items.length} recordings`}{" "}
+                  before the folder is removed.
+                </p>
+                <label
+                  htmlFor="delete-folder-move-to"
+                  className="mt-4 block text-sm font-medium text-black/80"
+                >
+                  Move to
+                </label>
+                <select
+                  id="delete-folder-move-to"
+                  value={moveToFolderId ?? ""}
+                  onChange={(e) =>
+                    setMoveToFolderId(
+                      e.target.value === "" ? null : e.target.value,
+                    )
+                  }
+                  disabled={deletingFolder}
+                  className="mt-1.5 w-full rounded-[10px] border border-[#D9D7CA] bg-white px-3 py-2.5 text-sm text-neutral-800 outline-none focus-visible:ring-2 focus-visible:ring-black/20 disabled:opacity-50"
+                >
+                  <option value="">Project (no folder)</option>
+                  {siblingFolders.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
+                {deleteFolderError ? (
+                  <p className="mt-3 text-sm text-red-600">{deleteFolderError}</p>
+                ) : null}
+                <div className="mt-5 flex flex-wrap items-center gap-3 text-[13px]">
+                  <button
+                    type="button"
+                    onClick={goToConfirmAfterChoose}
+                    disabled={deletingFolder}
+                    className="font-medium text-black/85 underline underline-offset-2 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Continue
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closeDeleteFlow}
+                    disabled={deletingFolder}
+                    className="text-black/50 underline underline-offset-2 disabled:opacity-40"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h2
+                  id="delete-folder-dialog-title"
+                  className="text-lg font-medium text-[#1e1e1e]"
+                  style={{ fontFamily: "var(--font-instrument-serif), serif" }}
+                >
+                  Delete this folder?
+                </h2>
+                <p className="mt-2 text-sm leading-relaxed text-black/70">
+                  {items.length === 0
+                    ? `Delete “${folder?.name ?? "this folder"}”? This cannot be undone.`
+                    : `Delete “${folder?.name ?? "this folder"}” and move ${items.length} recording${items.length === 1 ? "" : "s"} to ${destinationLabel}? This cannot be undone.`}
+                </p>
+                {deleteFolderError ? (
+                  <p className="mt-3 text-sm text-red-600">{deleteFolderError}</p>
+                ) : null}
+                <div className="mt-5 flex flex-wrap items-center gap-3 text-[13px]">
+                  <button
+                    type="button"
+                    onClick={() => void runDeleteFolder()}
+                    disabled={deletingFolder}
+                    className="font-medium text-red-800 underline underline-offset-2 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {deletingFolder ? "Deleting…" : "Delete folder"}
+                  </button>
+                  {items.length > 0 && deletePhase === "confirm" ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeleteFolderError(null);
+                        setDeletePhase("choose");
+                      }}
+                      disabled={deletingFolder}
+                      className="text-black/50 underline underline-offset-2 disabled:opacity-40"
+                    >
+                      Back
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={closeDeleteFlow}
+                    disabled={deletingFolder}
+                    className="text-black/50 underline underline-offset-2 disabled:opacity-40"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

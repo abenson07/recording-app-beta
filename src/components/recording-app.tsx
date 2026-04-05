@@ -1,10 +1,12 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
-import type {
-  RecordingItemRow,
-  RecordingProjectRow,
+import {
+  type RecordingItemRow,
+  type RecordingProjectRow,
+  displayNameFromFileName,
 } from "@/lib/recording-types";
+import { combineRecordingFileTranscripts } from "@/lib/recording-combine";
 import { persistRecordingBlob as persistRecordingBlobCore } from "@/lib/persist-recording";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -12,14 +14,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 /** Mic Start/Stop is hidden in the UI when false; upload + DB pipeline unchanged. */
 const SHOW_MIC_RECORDING = false;
-
-function combinedTranscript(item: RecordingItemRow): string {
-  const files = [...(item.recording_files ?? [])].sort(
-    (a, b) => a.sequence_index - b.sequence_index,
-  );
-  const parts = files.map((f) => f.transcript?.trim()).filter(Boolean);
-  return parts.join("\n\n");
-}
 
 function ItemCard({
   item,
@@ -40,7 +34,7 @@ function ItemCard({
   onProjectChange: (projectId: string | null) => void;
   micRecordingEnabled: boolean;
 }) {
-  const transcript = combinedTranscript(item);
+  const transcript = combineRecordingFileTranscripts(item.recording_files);
   const segments = item.recording_files?.length ?? 0;
 
   return (
@@ -148,7 +142,7 @@ export function RecordingApp() {
     const { data, error } = await supabase
       .from("recording_items")
       .select(
-        "id, title, created_at, project_id, recording_files (id, sequence_index, transcript, storage_path, duration, created_at)",
+        "id, title, created_at, project_id, recording_files (id, sequence_index, title, transcript, storage_path, duration, created_at)",
       )
       .order("created_at", { ascending: false });
 
@@ -173,6 +167,7 @@ export function RecordingApp() {
         durationSec: number | null;
         captureType: string;
         newItemTitle?: string;
+        recordingFileTitle?: string;
       },
     ): Promise<boolean> => {
       setRecordError(null);
@@ -296,7 +291,7 @@ export function RecordingApp() {
       contentType: file.type || "application/octet-stream",
       durationSec: null,
       captureType: "file_upload",
-      newItemTitle: `Upload · ${file.name}`,
+      recordingFileTitle: displayNameFromFileName(file.name),
     });
     if (!ok) {
       setRecordPhase("idle");

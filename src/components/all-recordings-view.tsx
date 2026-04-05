@@ -7,8 +7,10 @@ import type {
   RecordingProjectRow,
 } from "@/lib/recording-types";
 import {
+  displayNameFromFileName,
   formatDurationClock,
   formatRelativeTime,
+  recordingFileNamesPreview,
   segmentCount,
   totalDurationSec,
 } from "@/lib/recording-types";
@@ -43,7 +45,7 @@ export function AllRecordingsView() {
       supabase
         .from("recording_items")
         .select(
-          "id, title, created_at, updated_at, project_id, recording_files (id, sequence_index, transcript, storage_path, duration, created_at)",
+          "id, title, created_at, updated_at, project_id, recording_files (id, sequence_index, title, transcript, storage_path, duration, created_at)",
         )
         .order("created_at", { ascending: false }),
     ]);
@@ -68,7 +70,7 @@ export function AllRecordingsView() {
         contentType: file.type || "application/octet-stream",
         durationSec: null,
         captureType: "file_upload",
-        newItemTitle: `Upload · ${file.name}`,
+        recordingFileTitle: displayNameFromFileName(file.name),
       },
       {
         appendToItemId: null,
@@ -121,7 +123,14 @@ export function AllRecordingsView() {
               const segs = segmentCount(item);
               const dur = formatDurationClock(totalDurationSec(item));
               const project = projects.find((p) => p.id === item.project_id);
-              const subtitle = `${formatRelativeTime(touchIso)} · ${dur} · ${segs} segment${segs === 1 ? "" : "s"}${project ? ` · ${project.name}` : ""}`;
+              const names = recordingFileNamesPreview(item);
+              const subtitle = [
+                `${formatRelativeTime(touchIso)} · ${dur} · ${segs} segment${segs === 1 ? "" : "s"}`,
+                project?.name,
+                names,
+              ]
+                .filter(Boolean)
+                .join(" · ");
               return (
                 <li key={item.id}>
                   <ActivityCard

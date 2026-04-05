@@ -8,9 +8,12 @@ import type {
   RecordingProjectFolderRow,
   RecordingProjectRow,
 } from "@/lib/recording-types";
+import { combineRecordingFileTranscripts } from "@/lib/recording-combine";
 import {
+  fileDisplayTitle,
   formatDurationClock,
   formatRelativeTime,
+  displayNameFromFileName,
 } from "@/lib/recording-types";
 import {
   AppSectionLabel,
@@ -43,6 +46,9 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
   const [renaming, setRenaming] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
   const [titleError, setTitleError] = useState<string | null>(null);
+  const [renamingFileId, setRenamingFileId] = useState<string | null>(null);
+  const [draftFileTitle, setDraftFileTitle] = useState("");
+  const [fileTitleError, setFileTitleError] = useState<string | null>(null);
   const [showMoveOptions, setShowMoveOptions] = useState(false);
   const [creatingProject, setCreatingProject] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -61,7 +67,7 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
       supabase
         .from("recording_items")
         .select(
-          "id, title, created_at, updated_at, project_id, folder_id, recording_files (id, sequence_index, transcript, storage_path, duration, created_at)",
+          "id, title, created_at, updated_at, project_id, folder_id, recording_files (id, sequence_index, title, transcript, storage_path, duration, created_at)",
         )
         .eq("id", recordingId)
         .maybeSingle(),
@@ -138,7 +144,7 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
         contentType: file.type || "application/octet-stream",
         durationSec: null,
         captureType: "file_upload",
-        newItemTitle: `Upload · ${file.name}`,
+        recordingFileTitle: displayNameFromFileName(file.name),
       },
       {
         appendToItemId: recordingId,
@@ -234,6 +240,52 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
     }
 
     setUpdatingFolder(false);
+  };
+
+  const handleRenameFile = async (fileId: string) => {
+    if (!item) return;
+    const next = draftFileTitle.trim();
+    if (!next) {
+      setFileTitleError("Name cannot be empty.");
+      return;
+    }
+
+    const files = sortedFiles(item.recording_files);
+    const target = files.find((f) => f.id === fileId);
+    if (!target) return;
+
+    const prevStored = target.title?.trim() ?? "";
+    if (next === prevStored) {
+      setRenamingFileId(null);
+      setFileTitleError(null);
+      return;
+    }
+
+    setFileTitleError(null);
+    const prevTitle = target.title;
+    const nextFiles = files.map((f) =>
+      f.id === fileId ? { ...f, title: next } : f,
+    );
+    setItem({ ...item, recording_files: nextFiles });
+
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("recording_files")
+      .update({ title: next })
+      .eq("id", fileId);
+
+    if (error) {
+      setFileTitleError(error.message);
+      setItem({
+        ...item,
+        recording_files: files.map((f) =>
+          f.id === fileId ? { ...f, title: prevTitle ?? null } : f,
+        ),
+      });
+      return;
+    }
+
+    setRenamingFileId(null);
   };
 
   const handleRename = async () => {
@@ -368,10 +420,7 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
     item && !loading
       ? `${formatRelativeTime(touchIso)} · ${files.length} segment${files.length === 1 ? "" : "s"}`
       : undefined;
-  const outputTranscriptMarkdown = files
-    .map((f) => f.transcript?.trim())
-    .filter(Boolean)
-    .join("\n\n");
+  const outputTranscriptMarkdown = combineRecordingFileTranscripts(files);
 
   const activeProjectName = project?.name ?? "Unassigned (inbox)";
 
@@ -623,6 +672,9 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
             {titleError ? (
               <p className="text-sm text-red-600">{titleError}</p>
             ) : null}
+            {fileTitleError ? (
+              <p className="text-sm text-red-600">{fileTitleError}</p>
+            ) : null}
           </section>
         ) : null}
 
@@ -638,14 +690,61 @@ export function RecordingDetailView({ recordingId }: { recordingId: string }) {
             ) : (
               files.map((f) => {
                 const segDate = f.created_at ?? item!.created_at;
+                const displayTitle = fileDisplayTitle(f);
                 return (
-                  <li key={f.id}>
+                  <li key={f.id} className="flex flex-col gap-2">
                     <ActivityCard
                       variant="recording"
                       state="default"
-                      title={`Recording file ${f.sequence_index + 1}`}
+                      title={displayTitle}
                       subtitle={`${formatRelativeTime(segDate)} · ${formatDurationClock(f.duration ?? 0)}`}
                     />
+                    {renamingFileId === f.id ? (
+                      <div className="flex flex-col gap-2 pl-1">
+                        <label htmlFor={`file-title-${f.id}`} className="sr-only">
+                          Recording file name
+                        </label>
+                        <input
+                          id={`file-title-${f.id}`}
+                          type="text"
+                          value={draftFileTitle}
+                          onChange={(e) => setDraftFileTitle(e.target.value)}
+                          placeholder="File name"
+                          className="w-full rounded-[10px] border border-[#D9D7CA] bg-white px-3 py-2.5 text-sm text-neutral-800 outline-none focus-visible:ring-2 focus-visible:ring-black/20"
+                        />
+                        <div className="flex items-center gap-3 text-sm">
+                          <button
+                            type="button"
+                            onClick={() => void handleRenameFile(f.id)}
+                            className="text-black/75 underline underline-offset-2"
+                          >
+                            Save name
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRenamingFileId(null);
+                              setFileTitleError(null);
+                            }}
+                            className="text-black/50 underline underline-offset-2"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRenamingFileId(f.id);
+                          setDraftFileTitle(displayTitle);
+                          setFileTitleError(null);
+                        }}
+                        className="w-fit pl-1 text-left text-sm text-black/65 underline underline-offset-2"
+                      >
+                        Rename file
+                      </button>
+                    )}
                   </li>
                 );
               })

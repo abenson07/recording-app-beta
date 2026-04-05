@@ -18,7 +18,10 @@ export type PersistRecordingOptions = {
   contentType: string;
   durationSec: number | null;
   captureType: string;
+  /** Sets `recording_items.title` when creating a new item (not when appending). */
   newItemTitle?: string;
+  /** Sets `recording_files.title` for the inserted segment. */
+  recordingFileTitle?: string;
 };
 
 export type PersistRecordingContext = {
@@ -84,12 +87,16 @@ export async function persistRecordingBlob(
     targetItemId = ctx.appendToItemId;
     sequenceIndex = nextSequenceIndex(target.recording_files);
   } else {
+    const trimmedNewItem = options.newItemTitle?.trim();
+    const hasFileTitle = Boolean(options.recordingFileTitle?.trim());
     const title =
-      options.newItemTitle ??
-      `Recording ${new Date().toLocaleString(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      })}`;
+      trimmedNewItem ??
+      (hasFileTitle
+        ? "New idea"
+        : `Recording ${new Date().toLocaleString(undefined, {
+            dateStyle: "medium",
+            timeStyle: "short",
+          })}`);
 
     const projectId =
       ctx.newItemProjectId &&
@@ -128,6 +135,7 @@ export async function persistRecordingBlob(
     sequenceIndex = 0;
   }
 
+  const fileTitle = options.recordingFileTitle?.trim();
   const { error: fileErr } = await supabase.from("recording_files").insert({
     recording_item_id: targetItemId,
     sequence_index: sequenceIndex,
@@ -135,6 +143,7 @@ export async function persistRecordingBlob(
     transcript: "",
     duration: options.durationSec,
     capture_type: options.captureType,
+    ...(fileTitle ? { title: fileTitle } : {}),
   });
 
   if (fileErr) {
