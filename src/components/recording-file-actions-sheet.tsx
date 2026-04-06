@@ -6,7 +6,7 @@ import { fileDisplayTitle } from "@/lib/recording-types";
 import { BottomSheet } from "@/components/bottom-sheet";
 import { useCallback, useEffect, useState } from "react";
 
-type Phase = "menu" | "rename";
+type Phase = "menu" | "rename" | "deleteConfirm";
 
 type Props = {
   open: boolean;
@@ -75,10 +75,32 @@ export function RecordingFileActionsSheet({
     close();
   };
 
+  const runDelete = async () => {
+    if (!file) return;
+    setError(null);
+    setSaving(true);
+    const supabase = createClient();
+    const { error: err } = await supabase
+      .from("recording_files")
+      .delete()
+      .eq("id", file.id);
+    setSaving(false);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    onUpdated();
+    close();
+  };
+
   if (!file) return null;
 
   const titleText =
-    phase === "menu" ? fileDisplayTitle(file) : "Rename recording file";
+    phase === "menu"
+      ? fileDisplayTitle(file)
+      : phase === "rename"
+        ? "Rename recording file"
+        : "Delete recording file?";
 
   return (
     <BottomSheet
@@ -98,6 +120,16 @@ export function RecordingFileActionsSheet({
             className="rounded-xl px-3 py-3 text-left text-[15px] font-medium text-[#1e1e1e] transition-colors hover:bg-black/[0.04]"
           >
             Rename
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setError(null);
+              setPhase("deleteConfirm");
+            }}
+            className="rounded-xl px-3 py-3 text-left text-[15px] font-medium text-red-800 transition-colors hover:bg-red-50"
+          >
+            Delete
           </button>
           {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
           <button
@@ -131,6 +163,36 @@ export function RecordingFileActionsSheet({
               className="font-medium text-black/85 underline underline-offset-2 disabled:opacity-50"
             >
               {saving ? "Saving…" : "Save"}
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => {
+                setError(null);
+                setPhase("menu");
+              }}
+              className="text-black/50 underline underline-offset-2"
+            >
+              Back
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {phase === "deleteConfirm" ? (
+        <div className="mt-4 flex flex-col gap-3">
+          <p className="text-sm text-neutral-800">
+            Delete this recording file? This cannot be undone.
+          </p>
+          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+          <div className="flex flex-wrap gap-3 text-[13px]">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void runDelete()}
+              className="font-medium text-red-800 underline underline-offset-2 disabled:opacity-50"
+            >
+              {saving ? "Deleting…" : "Delete permanently"}
             </button>
             <button
               type="button"
